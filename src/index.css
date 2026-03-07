@@ -1,0 +1,71 @@
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg: #0b0f1c;
+  --bg2: #111622;
+  --bg3: #181e2e;
+  --border: rgba(180, 148, 80, 0.18);
+  --border-hover: rgba(180, 148, 80, 0.45);
+  --gold: #c8a840;
+  --gold-dim: rgba(200, 168, 64, 0.12);
+  --gold-glow: rgba(200, 168, 64, 0.06);
+  --text: #ede4ce;
+  --text-dim: #8a9aaa;
+  --text-muted: #4a5a6a;
+  --red: #c0503a;
+  --red-dim: rgba(192, 80, 58, 0.1);
+  --green: #4a9a6a;
+  --blue-dim: rgba(60, 100, 180, 0.12);
+  --font-serif: 'Crimson Pro', Georgia, serif;
+  --font-mono: 'JetBrains Mono', 'Courier New', monospace;
+  --radius: 5px;
+  --shadow: 0 2px 16px rgba(0,0,0,0.4);
+}
+
+html { font-size: 16px; }
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-serif);
+  min-height: 100vh;
+  -webkit-font-smoothing: antialiased;
+}
+
+input, textarea, select {
+  font-family: var(--font-serif);
+  font-size: 14px;
+  color: var(--text);
+  background: rgba(255,255,255,0.03);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 10px 14px;
+  width: 100%;
+  outline: none;
+  transition: border-color 0.15s;
+}
+
+input:focus, textarea:focus, select:focus {
+  border-color: var(--border-hover);
+}
+
+select option { background: #1a2030; }
+
+button { cursor: pointer; font-family: var(--font-mono); }
+
+textarea { resize: vertical; }
+
+::-webkit-scrollbar { width: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: rgba(180,148,80,0.2); border-radius: 2px; }
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.fade-in { animation: fadeIn 0.25s ease forwards; }
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
