@@ -1356,181 +1356,340 @@ function ArchiveView({ showFlash, loadData, requireAdmin }) {
 // ── Service Info View ──────────────────────────────────────────────────────
 function ServiceInfoView({ showFlash }) {
   const [items, setItems] = useState([]);
+  const [services, setServices] = useState([]);
+  const [serviceCategories, setServiceCategories] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [activeCategory, setActiveCategory] = useState(SERVICE_INFO_CATEGORIES[0]);
+  const [activeService, setActiveService] = useState(null);
+  const [activeCategory, setActiveCategory] = useState(null);
   const [showAdd, setShowAdd] = useState(false);
   const [editingItem, setEditingItem] = useState(null);
-  const [form, setForm] = useState({ title: '', body: '', category: SERVICE_INFO_CATEGORIES[0] });
+  const [form, setForm] = useState({ title: '', body: '', category: '', service_id: '' });
   const [saving, setSaving] = useState(false);
 
-  const loadItems = useCallback(async () => {
+  // Manage services
+  const [managingServices, setManagingServices] = useState(false);
+  const [newServiceName, setNewServiceName] = useState('');
+  const [savingService, setSavingService] = useState(false);
+
+  // Manage categories
+  const [managingCategories, setManagingCategories] = useState(false);
+  const [newCategoryName, setNewCategoryName] = useState('');
+  const [savingCategory, setSavingCategory] = useState(false);
+
+  const loadAll = useCallback(async () => {
     setLoading(true);
-    const { data } = await supabase.from('service_info').select('*').order('category').order('created_at');
-    setItems(data || []);
+    const [{ data: svc }, { data: cats }, { data: itms }] = await Promise.all([
+      supabase.from('services').select('*').order('name'),
+      supabase.from('custom_service_categories').select('*').order('name'),
+      supabase.from('service_info').select('*').order('created_at'),
+    ]);
+    const svcs = svc || [];
+    const allCats = cats && cats.length > 0 ? cats.map(c => c.name) : SERVICE_INFO_CATEGORIES;
+    setServices(svcs);
+    setServiceCategories(allCats);
+    setItems(itms || []);
+    // Set defaults
+    if (svcs.length > 0) setActiveService(s => s || svcs[0].id);
+    setActiveCategory(c => c || allCats[0]);
     setLoading(false);
   }, []);
 
-  useEffect(() => { loadItems(); }, [loadItems]);
+  useEffect(() => { loadAll(); }, [loadAll]);
+
+  // Ensure custom_service_categories is seeded with defaults if empty
+  useEffect(() => {
+    const seed = async () => {
+      const { data } = await supabase.from('custom_service_categories').select('id');
+      if (!data || data.length === 0) {
+        await supabase.from('custom_service_categories').insert(
+          SERVICE_INFO_CATEGORIES.map(name => ({ name }))
+        );
+        await loadAll();
+      }
+    };
+    seed();
+  }, []); // eslint-disable-line
 
   const handleSave = async () => {
-    if (!form.title.trim() || !form.body.trim()) return;
+    if (!form.title.trim() || !form.body.trim() || !form.service_id || !form.category) return;
     setSaving(true);
     if (editingItem) {
-      await supabase.from('service_info').update({ title: form.title, body: form.body, category: form.category }).eq('id', editingItem.id);
+      await supabase.from('service_info').update({ title: form.title, body: form.body, category: form.category, service_id: form.service_id }).eq('id', editingItem.id);
       showFlash('Entry updated');
     } else {
       await supabase.from('service_info').insert([form]);
       showFlash('Entry added');
     }
     setSaving(false);
-    await loadItems();
-    setForm({ title: '', body: '', category: activeCategory });
+    await loadAll();
+    setForm({ title: '', body: '', category: activeCategory, service_id: activeService });
     setShowAdd(false);
     setEditingItem(null);
   };
 
   const handleEdit = (item) => {
     setEditingItem(item);
-    setForm({ title: item.title, body: item.body, category: item.category });
+    setForm({ title: item.title, body: item.body, category: item.category, service_id: item.service_id });
     setShowAdd(true);
   };
 
   const handleDelete = async (item) => {
-    await archiveItem('service_info', `${item.category} — ${item.title}`, { item });
+    const svcName = services.find(s => s.id === item.service_id)?.name || '';
+    await archiveItem('service_info', `${svcName} / ${item.category} — ${item.title}`, { item });
     await supabase.from('service_info').delete().eq('id', item.id);
-    await loadItems();
+    await loadAll();
     showFlash('Entry removed — saved to Archive', 'error');
   };
 
   const handleCancel = () => {
     setShowAdd(false);
     setEditingItem(null);
-    setForm({ title: '', body: '', category: activeCategory });
+    setForm({ title: '', body: '', category: activeCategory, service_id: activeService });
   };
 
-  const catItems = items.filter(i => i.category === activeCategory);
-
-  const catColors = {
-    'Expectations': '#8a6a3a', 'Follow-up Visits': '#4a7a6a', 'Post-op Imaging': '#6a4a8a',
-    'Post-op Labs': '#4a6a8a', 'Dot Phrases': '#7a6a4a', 'Consult Tips': '#6a8a4a',
-    'Floor Management': '#8a4a6a', 'Other': '#5a6a7a'
+  // Add service
+  const handleAddService = async () => {
+    const trimmed = newServiceName.trim();
+    if (!trimmed || services.find(s => s.name === trimmed)) return;
+    setSavingService(true);
+    await supabase.from('services').insert([{ name: trimmed }]);
+    await loadAll();
+    setSavingService(false);
+    setNewServiceName('');
+    showFlash(`"${trimmed}" added`);
   };
+
+  const handleDeleteService = async (svc) => {
+    if (!window.confirm(`Remove "${svc.name}" service? All its entries will also be deleted.`)) return;
+    await supabase.from('service_info').delete().eq('service_id', svc.id);
+    await supabase.from('services').delete().eq('id', svc.id);
+    await loadAll();
+    if (activeService === svc.id) setActiveService(services.find(s => s.id !== svc.id)?.id || null);
+    showFlash(`"${svc.name}" removed`, 'error');
+  };
+
+  // Add category
+  const handleAddCategory = async () => {
+    const trimmed = newCategoryName.trim();
+    if (!trimmed || serviceCategories.includes(trimmed)) return;
+    setSavingCategory(true);
+    await supabase.from('custom_service_categories').insert([{ name: trimmed }]);
+    await loadAll();
+    setSavingCategory(false);
+    setNewCategoryName('');
+    showFlash(`"${trimmed}" added`);
+  };
+
+  const handleDeleteCategory = async (cat) => {
+    if (!window.confirm(`Remove "${cat}" category? Entries in this category will not be deleted but will lose their category label.`)) return;
+    await supabase.from('custom_service_categories').delete().eq('name', cat);
+    await loadAll();
+    if (activeCategory === cat) setActiveCategory(serviceCategories.find(c => c !== cat) || null);
+    showFlash(`"${cat}" removed`, 'error');
+  };
+
+  const catColors = [
+    '#8a6a3a','#4a7a6a','#6a4a8a','#4a6a8a','#7a6a4a','#6a8a4a','#8a4a6a','#5a6a7a',
+    '#7a4a4a','#4a7a8a','#8a7a4a','#5a8a6a','#7a5a8a','#6a7a4a','#4a6a7a'
+  ];
+  const getCatColor = (cat) => {
+    const idx = serviceCategories.indexOf(cat);
+    return catColors[idx % catColors.length] || '#5a6a7a';
+  };
+
+  const activeServiceObj = services.find(s => s.id === activeService);
+  const catItems = items.filter(i => i.service_id === activeService && i.category === activeCategory);
 
   return (
     <div className="fade-in">
+      {/* Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 6 }}>
         <div>
           <h2 style={S.sectionHead}>Service Info</h2>
-          <p style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 20, fontStyle: 'italic' }}>
-            Expectations, follow-up protocols, post-op orders, dot phrases, and other service-wide knowledge.
+          <p style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 16, fontStyle: 'italic' }}>
+            Service-specific expectations, protocols, dot phrases, and more.
           </p>
         </div>
-        {!showAdd && (
-          <button onClick={() => { setShowAdd(true); setForm(f => ({ ...f, category: activeCategory })); }}
+        {!showAdd && activeService && (
+          <button onClick={() => { setShowAdd(true); setForm({ title: '', body: '', category: activeCategory, service_id: activeService }); }}
             style={{ ...S.secondaryBtn, flexShrink: 0 }}>+ Add Entry</button>
         )}
       </div>
 
-      {/* Category tabs */}
-      <div style={{ display: 'flex', gap: 0, flexWrap: 'wrap', borderBottom: '1px solid var(--border)', marginBottom: 22 }}>
-        {SERVICE_INFO_CATEGORIES.map(cat => (
-          <button key={cat} onClick={() => setActiveCategory(cat)} style={{
-            background: 'none', border: 'none',
-            borderBottom: activeCategory === cat ? `2px solid ${catColors[cat] || 'var(--gold)'}` : '2px solid transparent',
-            color: activeCategory === cat ? (catColors[cat] || 'var(--gold)') : 'var(--text-muted)',
-            padding: '8px 14px', fontSize: 11, letterSpacing: '0.1em', textTransform: 'uppercase',
-            marginBottom: -1, cursor: 'pointer', whiteSpace: 'nowrap', transition: 'all 0.15s',
-            fontFamily: 'var(--font-mono)'
-          }}>
-            {cat}
-            {items.filter(i => i.category === cat).length > 0 && (
-              <span style={{ marginLeft: 5, fontSize: 10, opacity: 0.6 }}>
-                {items.filter(i => i.category === cat).length}
-              </span>
-            )}
+      {loading ? <div style={{ textAlign: 'center', padding: 40 }}><Spinner /></div> : (<>
+
+      {/* Service selector row */}
+      <div style={{ marginBottom: 20 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, flex: 1 }}>
+            {services.map(svc => (
+              <button key={svc.id} onClick={() => setActiveService(svc.id)} style={{
+                ...S.tag, ...(activeService === svc.id ? S.tagActive : {}), fontSize: 12, padding: '6px 14px'
+              }}>{svc.name}</button>
+            ))}
+          </div>
+          <button onClick={() => setManagingServices(v => !v)} style={{ ...S.ghostBtn, fontSize: 10, color: 'var(--text-muted)', flexShrink: 0 }}>
+            {managingServices ? 'done' : '⚙ services'}
           </button>
-        ))}
-      </div>
-
-      {/* Add / Edit form */}
-      {showAdd && (
-        <div style={{ ...S.card, marginBottom: 24, background: 'var(--bg3)', borderColor: 'rgba(180,140,60,0.2)' }}>
-          <div style={{ fontSize: 10, letterSpacing: '0.18em', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', marginBottom: 14, textTransform: 'uppercase' }}>
-            {editingItem ? 'Edit Entry' : 'New Entry'}
-          </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-            <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 12 }}>
-              <Field label="Title *">
-                <input value={form.title} onChange={e => setForm({...form, title: e.target.value})}
-                  placeholder={activeCategory === 'Dot Phrases' ? 'e.g. .lapchole postop' : activeCategory === 'Expectations' ? 'e.g. Rounding expectations' : 'e.g. Post-op day 1 labs'} />
-              </Field>
-              <Field label="Category">
-                <select value={form.category} onChange={e => setForm({...form, category: e.target.value})}>
-                  {SERVICE_INFO_CATEGORIES.map(c => <option key={c}>{c}</option>)}
-                </select>
-              </Field>
-            </div>
-            <Field label={activeCategory === 'Dot Phrases' ? 'Dot Phrase Text *' : 'Details *'}>
-              <textarea value={form.body} onChange={e => setForm({...form, body: e.target.value})}
-                placeholder={
-                  activeCategory === 'Dot Phrases'
-                    ? 'Paste the full dot phrase text here...'
-                    : activeCategory === 'Follow-up Visits'
-                    ? 'e.g. All patients follow up in clinic 2 weeks post-op. Call [number] to schedule...'
-                    : activeCategory === 'Expectations'
-                    ? 'e.g. Pre-round on all surgical patients before 6am. Prioritize post-op day 1 patients...'
-                    : 'Details...'
-                }
-                rows={activeCategory === 'Dot Phrases' ? 8 : 4}
-                style={{ fontFamily: activeCategory === 'Dot Phrases' ? 'var(--font-mono)' : undefined, fontSize: activeCategory === 'Dot Phrases' ? 12 : undefined }}
-              />
-            </Field>
-            <div style={{ display: 'flex', gap: 8 }}>
-              <button onClick={handleCancel} style={{ ...S.secondaryBtn, flex: 1 }}>Cancel</button>
-              <button onClick={handleSave} style={{ ...S.primaryBtn, flex: 3 }} disabled={saving}>
-                {saving ? <Spinner /> : editingItem ? 'Save Changes' : 'Add Entry'}
-              </button>
-            </div>
-          </div>
         </div>
-      )}
 
-      {/* Items list */}
-      {loading ? (
-        <div style={{ textAlign: 'center', padding: 40 }}><Spinner /></div>
-      ) : catItems.length === 0 ? (
-        <div style={{ textAlign: 'center', padding: '50px 20px', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', fontSize: 12, border: '1px dashed rgba(255,255,255,0.07)', borderRadius: 6 }}>
-          No entries yet for {activeCategory}. Add the first one.
-        </div>
-      ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-          {catItems.map(item => (
-            <div key={item.id} style={{ ...S.card, borderLeft: `3px solid ${catColors[item.category] || 'var(--border)'}` }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 }}>
-                <div style={{ fontSize: 15, color: 'var(--text)', fontFamily: 'var(--font-serif)', flex: 1 }}>{item.title}</div>
-                <div style={{ display: 'flex', gap: 12, flexShrink: 0, marginLeft: 12 }}>
-                  <button onClick={() => handleEdit(item)} style={{ ...S.ghostBtn, fontSize: 11, color: '#4a6a7a' }}>edit</button>
-                  <button onClick={() => handleDelete(item)} style={{ background: 'none', border: 'none', color: '#5a3a2a', fontSize: 16, padding: 0, cursor: 'pointer', transition: 'color 0.15s' }}
+        {/* Manage services panel */}
+        {managingServices && (
+          <div style={{ marginTop: 12, padding: '14px 16px', background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 'var(--radius)' }}>
+            <div style={{ fontSize: 10, letterSpacing: '0.15em', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', marginBottom: 10, textTransform: 'uppercase' }}>Manage Services</div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 10 }}>
+              {services.map(svc => (
+                <div key={svc.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '7px 10px', background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 4 }}>
+                  <span style={{ fontSize: 13, color: 'var(--text)', fontFamily: 'var(--font-serif)' }}>{svc.name}</span>
+                  <button onClick={() => handleDeleteService(svc)} style={{ background: 'none', border: 'none', color: '#5a3a2a', fontSize: 15, padding: 0, cursor: 'pointer', transition: 'color 0.15s' }}
                     onMouseEnter={e => e.currentTarget.style.color = 'var(--red)'}
                     onMouseLeave={e => e.currentTarget.style.color = '#5a3a2a'}>×</button>
                 </div>
+              ))}
+            </div>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <input value={newServiceName} onChange={e => setNewServiceName(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && handleAddService()}
+                placeholder="New service name..." style={{ flex: 1 }} />
+              <button onClick={handleAddService} style={S.secondaryBtn} disabled={savingService}>{savingService ? <Spinner /> : 'Add'}</button>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {activeServiceObj && (<>
+        {/* Category tabs */}
+        <div style={{ display: 'flex', alignItems: 'flex-end', gap: 0, borderBottom: '1px solid var(--border)', marginBottom: 22 }}>
+          <div style={{ display: 'flex', flexWrap: 'wrap', flex: 1, overflowX: 'auto' }}>
+            {serviceCategories.map(cat => (
+              <button key={cat} onClick={() => setActiveCategory(cat)} style={{
+                background: 'none', border: 'none',
+                borderBottom: activeCategory === cat ? `2px solid ${getCatColor(cat)}` : '2px solid transparent',
+                color: activeCategory === cat ? getCatColor(cat) : 'var(--text-muted)',
+                padding: '8px 14px', fontSize: 11, letterSpacing: '0.1em', textTransform: 'uppercase',
+                marginBottom: -1, cursor: 'pointer', whiteSpace: 'nowrap', transition: 'all 0.15s',
+                fontFamily: 'var(--font-mono)'
+              }}>
+                {cat}
+                {items.filter(i => i.service_id === activeService && i.category === cat).length > 0 && (
+                  <span style={{ marginLeft: 5, fontSize: 10, opacity: 0.6 }}>
+                    {items.filter(i => i.service_id === activeService && i.category === cat).length}
+                  </span>
+                )}
+              </button>
+            ))}
+          </div>
+          <button onClick={() => setManagingCategories(v => !v)} style={{ ...S.ghostBtn, fontSize: 10, color: 'var(--text-muted)', padding: '8px 8px', marginBottom: 2, flexShrink: 0 }}>
+            {managingCategories ? 'done' : '⚙ tabs'}
+          </button>
+        </div>
+
+        {/* Manage categories panel */}
+        {managingCategories && (
+          <div style={{ marginBottom: 20, padding: '14px 16px', background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 'var(--radius)' }}>
+            <div style={{ fontSize: 10, letterSpacing: '0.15em', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', marginBottom: 10, textTransform: 'uppercase' }}>Manage Category Tabs</div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 10 }}>
+              {serviceCategories.map(cat => (
+                <div key={cat} style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '4px 10px', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 3 }}>
+                  <span style={{ fontSize: 12, color: 'var(--text-dim)', fontFamily: 'var(--font-mono)' }}>{cat}</span>
+                  <button onClick={() => handleDeleteCategory(cat)} style={{ background: 'none', border: 'none', color: '#5a3a2a', fontSize: 14, padding: '0 0 0 4px', cursor: 'pointer', lineHeight: 1, transition: 'color 0.15s' }}
+                    onMouseEnter={e => e.currentTarget.style.color = 'var(--red)'}
+                    onMouseLeave={e => e.currentTarget.style.color = '#5a3a2a'}>×</button>
+                </div>
+              ))}
+            </div>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <input value={newCategoryName} onChange={e => setNewCategoryName(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && handleAddCategory()}
+                placeholder="New tab name..." style={{ flex: 1 }} />
+              <button onClick={handleAddCategory} style={S.secondaryBtn} disabled={savingCategory}>{savingCategory ? <Spinner /> : 'Add'}</button>
+            </div>
+          </div>
+        )}
+
+        {/* Add / Edit form */}
+        {showAdd && (
+          <div style={{ ...S.card, marginBottom: 24, background: 'var(--bg3)', borderColor: 'rgba(180,140,60,0.2)' }}>
+            <div style={{ fontSize: 10, letterSpacing: '0.18em', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', marginBottom: 14, textTransform: 'uppercase' }}>
+              {editingItem ? 'Edit Entry' : `New Entry — ${activeServiceObj.name}`}
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 12 }}>
+                <Field label="Title *">
+                  <input value={form.title} onChange={e => setForm({...form, title: e.target.value})}
+                    placeholder={form.category === 'Dot Phrases' ? 'e.g. .lapchole postop' : form.category === 'Expectations' ? 'e.g. Rounding expectations' : 'Title...'} />
+                </Field>
+                <Field label="Category">
+                  <select value={form.category} onChange={e => setForm({...form, category: e.target.value})}>
+                    {serviceCategories.map(c => <option key={c}>{c}</option>)}
+                  </select>
+                </Field>
               </div>
-              <pre style={{
-                margin: 0, fontSize: item.category === 'Dot Phrases' ? 12 : 13,
-                color: item.category === 'Dot Phrases' ? '#8ab0a0' : '#b0a880',
-                fontFamily: item.category === 'Dot Phrases' ? 'var(--font-mono)' : 'var(--font-serif)',
-                lineHeight: 1.7, whiteSpace: 'pre-wrap', wordBreak: 'break-word',
-                background: item.category === 'Dot Phrases' ? 'rgba(0,0,0,0.2)' : 'transparent',
-                padding: item.category === 'Dot Phrases' ? '10px 12px' : 0,
-                borderRadius: item.category === 'Dot Phrases' ? 4 : 0
-              }}>{item.body}</pre>
-              <div style={{ marginTop: 8, fontSize: 10, color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>
-                Added {new Date(item.created_at).toLocaleDateString()}
+              {editingItem && (
+                <Field label="Service">
+                  <select value={form.service_id} onChange={e => setForm({...form, service_id: e.target.value})}>
+                    {services.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                  </select>
+                </Field>
+              )}
+              <Field label={form.category === 'Dot Phrases' ? 'Dot Phrase Text *' : 'Details *'}>
+                <textarea value={form.body} onChange={e => setForm({...form, body: e.target.value})}
+                  placeholder={
+                    form.category === 'Dot Phrases' ? 'Paste the full dot phrase text here...'
+                    : form.category === 'Follow-up Visits' ? 'e.g. All patients follow up in clinic 2 weeks post-op...'
+                    : form.category === 'Expectations' ? 'e.g. Pre-round on all surgical patients before 6am...'
+                    : 'Details...'
+                  }
+                  rows={form.category === 'Dot Phrases' ? 8 : 4}
+                  style={{ fontFamily: form.category === 'Dot Phrases' ? 'var(--font-mono)' : undefined, fontSize: form.category === 'Dot Phrases' ? 12 : undefined }}
+                />
+              </Field>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button onClick={handleCancel} style={{ ...S.secondaryBtn, flex: 1 }}>Cancel</button>
+                <button onClick={handleSave} style={{ ...S.primaryBtn, flex: 3 }} disabled={saving}>
+                  {saving ? <Spinner /> : editingItem ? 'Save Changes' : 'Add Entry'}
+                </button>
               </div>
             </div>
-          ))}
-        </div>
-      )}
+          </div>
+        )}
+
+        {/* Items list */}
+        {catItems.length === 0 ? (
+          <div style={{ textAlign: 'center', padding: '50px 20px', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', fontSize: 12, border: '1px dashed rgba(255,255,255,0.07)', borderRadius: 6 }}>
+            No entries yet for {activeServiceObj.name} / {activeCategory}. Add the first one.
+          </div>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            {catItems.map(item => (
+              <div key={item.id} style={{ ...S.card, borderLeft: `3px solid ${getCatColor(item.category)}` }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 }}>
+                  <div style={{ fontSize: 15, color: 'var(--text)', fontFamily: 'var(--font-serif)', flex: 1 }}>{item.title}</div>
+                  <div style={{ display: 'flex', gap: 12, flexShrink: 0, marginLeft: 12 }}>
+                    <button onClick={() => handleEdit(item)} style={{ ...S.ghostBtn, fontSize: 11, color: '#4a6a7a' }}>edit</button>
+                    <button onClick={() => handleDelete(item)} style={{ background: 'none', border: 'none', color: '#5a3a2a', fontSize: 16, padding: 0, cursor: 'pointer', transition: 'color 0.15s' }}
+                      onMouseEnter={e => e.currentTarget.style.color = 'var(--red)'}
+                      onMouseLeave={e => e.currentTarget.style.color = '#5a3a2a'}>×</button>
+                  </div>
+                </div>
+                <pre style={{
+                  margin: 0, fontSize: item.category === 'Dot Phrases' ? 12 : 13,
+                  color: item.category === 'Dot Phrases' ? '#8ab0a0' : '#b0a880',
+                  fontFamily: item.category === 'Dot Phrases' ? 'var(--font-mono)' : 'var(--font-serif)',
+                  lineHeight: 1.7, whiteSpace: 'pre-wrap', wordBreak: 'break-word',
+                  background: item.category === 'Dot Phrases' ? 'rgba(0,0,0,0.2)' : 'transparent',
+                  padding: item.category === 'Dot Phrases' ? '10px 12px' : 0,
+                  borderRadius: item.category === 'Dot Phrases' ? 4 : 0
+                }}>{item.body}</pre>
+                <div style={{ marginTop: 8, fontSize: 10, color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>
+                  Added {new Date(item.created_at).toLocaleDateString()}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </>)}
+      </>)}
     </div>
   );
 }
