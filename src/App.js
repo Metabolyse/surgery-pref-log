@@ -58,7 +58,8 @@ export default function App() {
   const [loading, setLoading] = useState(true);
   const [flash, setFlash] = useState(null);
 
-  const allProcedures = [...new Set([...DEFAULT_PROCEDURES, ...customProcedures.map(p => p.name)])].sort();
+  const hiddenDefaults = customProcedures.filter(p => p.name.startsWith('__HIDDEN__')).map(p => p.name.replace('__HIDDEN__', ''));
+  const allProcedures = [...new Set([...DEFAULT_PROCEDURES.filter(p => !hiddenDefaults.includes(p)), ...customProcedures.filter(p => !p.name.startsWith('__HIDDEN__')).map(p => p.name)])].sort();
 
   const showFlash = useCallback((msg, type = 'success') => {
     setFlash({ msg, type });
@@ -788,6 +789,31 @@ function ProceduresView({ customProcedures, loadData, showFlash, allProcedures, 
     showFlash('Procedure removed', 'error');
   };
 
+  // For default procedures, we track deletions in a separate DB table so they
+  // stay hidden across all sessions. We also clean up any linked prefs/resources.
+  const [hiddenDefaults, setHiddenDefaults] = useState([]);
+
+  useEffect(() => {
+    const loadHidden = async () => {
+      const { data } = await supabase.from('custom_procedures').select('name').like('name', '__HIDDEN__%');
+      setHiddenDefaults((data || []).map(d => d.name.replace('__HIDDEN__', '')));
+    };
+    loadHidden();
+  }, [customProcedures]);
+
+  const handleDeleteDefault = async (procName) => {
+    if (!window.confirm(`Remove "${procName}" from the procedure list? Any linked preference notes and resources will also be deleted.`)) return;
+    // Mark as hidden by inserting a sentinel record
+    await supabase.from('custom_procedures').insert([{ name: `__HIDDEN__${procName}` }]);
+    // Clean up linked data
+    await supabase.from('preferences').delete().eq('procedure', procName);
+    await supabase.from('resources').delete().eq('procedure', procName);
+    await loadData();
+    showFlash(`"${procName}" removed`, 'error');
+  };
+
+  const visibleDefaults = DEFAULT_PROCEDURES.filter(p => !hiddenDefaults.includes(p));
+
   const openEdit = (procName, isDefault) => {
     setEditTarget({ name: procName, isDefault });
     setEditMode('rename');
@@ -962,12 +988,15 @@ function ProceduresView({ customProcedures, loadData, showFlash, allProcedures, 
 
       {/* Default procedures */}
       <div>
-        <div style={S.divider}>Default Procedures <span style={{ color: 'var(--text-muted)', fontWeight: 400 }}>— click to rename or split</span></div>
+        <div style={S.divider}>Default Procedures <span style={{ color: 'var(--text-muted)', fontWeight: 400 }}>— edit to rename or split</span></div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
-          {DEFAULT_PROCEDURES.map(p => (
+          {visibleDefaults.map(p => (
             <div key={p} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '9px 14px', background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 'var(--radius)' }}>
               <span style={{ fontSize: 13, color: '#6a7a8a', fontFamily: 'var(--font-serif)' }}>{p}</span>
-              <button onClick={() => openEdit(p, true)} style={{ ...S.ghostBtn, fontSize: 11 }}>edit</button>
+              <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+                <button onClick={() => openEdit(p, true)} style={{ ...S.ghostBtn, fontSize: 11 }}>edit</button>
+                <button onClick={() => handleDeleteDefault(p)} style={{ background: 'none', border: 'none', color: '#5a3a2a', fontSize: 16, padding: 0, cursor: 'pointer', transition: 'color 0.15s' }} onMouseEnter={e => e.currentTarget.style.color='var(--red)'} onMouseLeave={e => e.currentTarget.style.color='#5a3a2a'}>×</button>
+              </div>
             </div>
           ))}
         </div>
