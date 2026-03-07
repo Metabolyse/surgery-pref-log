@@ -47,6 +47,49 @@ function Flash({ flash }) {
   );
 }
 
+// ── Archive helper ─────────────────────────────────────────────────────────
+const archiveItem = async (type, label, data) => {
+  try {
+    await supabase.from('archive').insert([{ type, label, data }]);
+  } catch (e) { console.error('Archive failed', e); }
+};
+
+// ── Admin password modal ───────────────────────────────────────────────────
+function AdminModal({ onSuccess, onCancel }) {
+  const [input, setInput] = useState('');
+  const [error, setError] = useState(false);
+
+  const handleSubmit = () => {
+    if (input === process.env.REACT_APP_ADMIN_PASSWORD) {
+      onSuccess();
+    } else {
+      setError(true);
+      setInput('');
+      setTimeout(() => setError(false), 2000);
+    }
+  };
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.75)', zIndex: 600, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+      <div style={{ background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 8, padding: 28, width: '100%', maxWidth: 360, boxShadow: '0 8px 40px rgba(0,0,0,0.6)' }}>
+        <div style={{ fontSize: 14, color: 'var(--text)', fontFamily: 'var(--font-serif)', marginBottom: 6 }}>Admin Access Required</div>
+        <div style={{ fontSize: 12, color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', marginBottom: 20 }}>Enter the admin password to continue.</div>
+        <input
+          type="password" value={input} onChange={e => setInput(e.target.value)}
+          onKeyDown={e => e.key === 'Enter' && handleSubmit()}
+          placeholder="Password" autoFocus
+          style={{ marginBottom: 8, borderColor: error ? 'var(--red)' : undefined }}
+        />
+        {error && <div style={{ fontSize: 11, color: 'var(--red)', fontFamily: 'var(--font-mono)', marginBottom: 8 }}>Incorrect password</div>}
+        <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
+          <button onClick={onCancel} style={{ ...S.secondaryBtn, flex: 1 }}>Cancel</button>
+          <button onClick={handleSubmit} style={{ ...S.primaryBtn, flex: 2 }}>Unlock</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Main App ───────────────────────────────────────────────────────────────
 export default function App() {
   const [view, setView] = useState('list');
@@ -57,6 +100,21 @@ export default function App() {
   const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(true);
   const [flash, setFlash] = useState(null);
+  const [adminUnlocked, setAdminUnlocked] = useState(false);
+  const [showAdminModal, setShowAdminModal] = useState(false);
+  const [pendingAdminAction, setPendingAdminAction] = useState(null);
+
+  const requireAdmin = (action) => {
+    if (adminUnlocked) { action(); return; }
+    setPendingAdminAction(() => action);
+    setShowAdminModal(true);
+  };
+
+  const handleAdminSuccess = () => {
+    setAdminUnlocked(true);
+    setShowAdminModal(false);
+    if (pendingAdminAction) { pendingAdminAction(); setPendingAdminAction(null); }
+  };
 
   const hiddenDefaults = customProcedures.filter(p => p.name.startsWith('__HIDDEN__')).map(p => p.name.replace('__HIDDEN__', ''));
   const allProcedures = [...new Set([...DEFAULT_PROCEDURES.filter(p => !hiddenDefaults.includes(p)), ...customProcedures.filter(p => !p.name.startsWith('__HIDDEN__')).map(p => p.name)])].sort();
@@ -148,15 +206,15 @@ export default function App() {
     { key: 'resources', label: 'Resources' },
     { key: 'opNote', label: 'Op Note' },
     { key: 'procedures', label: 'Procedures' },
+    { key: 'archive', label: 'Archive' },
   ];
-  const topLevel = ['list','resources','opNote','procedures'];
 
   return (
     <div style={{ minHeight: '100vh', background: 'var(--bg)', position: 'relative' }}>
-      {/* Background atmosphere */}
       <div style={{ position: 'fixed', inset: 0, pointerEvents: 'none', background: 'radial-gradient(ellipse at 15% 60%, rgba(180,120,40,0.05) 0%, transparent 55%), radial-gradient(ellipse at 85% 15%, rgba(40,80,160,0.06) 0%, transparent 50%)', zIndex: 0 }} />
 
       <Flash flash={flash} />
+      {showAdminModal && <AdminModal onSuccess={handleAdminSuccess} onCancel={() => { setShowAdminModal(false); setPendingAdminAction(null); }} />}
 
       <div style={{ position: 'relative', zIndex: 1, maxWidth: 800, margin: '0 auto', padding: '0 16px 80px' }}>
 
@@ -180,9 +238,9 @@ export default function App() {
           </div>
 
           {/* Tabs — always visible */}
-          <div style={{ display: 'flex', gap: 0 }}>
+          <div style={{ display: 'flex', gap: 0, overflowX: 'auto' }}>
             {TABS.map(t => (
-              <button key={t.key} onClick={() => setView(t.key)} style={{ background: 'none', border: 'none', borderBottom: (t.key === 'list' ? ['list','detail','addAttending','addNote'].includes(view) : view === t.key) ? '2px solid var(--gold)' : '2px solid transparent', color: (t.key === 'list' ? ['list','detail','addAttending','addNote'].includes(view) : view === t.key) ? 'var(--gold)' : 'var(--text-muted)', padding: '10px 16px', fontSize: 11, letterSpacing: '0.12em', textTransform: 'uppercase', marginBottom: -1, transition: 'all 0.15s', cursor: 'pointer' }}>
+              <button key={t.key} onClick={() => setView(t.key)} style={{ background: 'none', border: 'none', borderBottom: (t.key === 'list' ? ['list','detail','addAttending','addNote'].includes(view) : view === t.key) ? '2px solid var(--gold)' : '2px solid transparent', color: (t.key === 'list' ? ['list','detail','addAttending','addNote'].includes(view) : view === t.key) ? 'var(--gold)' : 'var(--text-muted)', padding: '10px 16px', fontSize: 11, letterSpacing: '0.12em', textTransform: 'uppercase', marginBottom: -1, transition: 'all 0.15s', cursor: 'pointer', whiteSpace: 'nowrap' }}>
                 {t.label}
               </button>
             ))}
@@ -201,6 +259,7 @@ export default function App() {
               {view === 'resources' && <ResourcesView allProcedures={allProcedures} showFlash={showFlash} />}
               {view === 'opNote' && <OpNoteView allProcedures={allProcedures} attendings={attendings} getPrefsForProcedure={getPrefsForProcedure} />}
               {view === 'procedures' && <ProceduresView customProcedures={customProcedures} loadData={loadData} showFlash={showFlash} allProcedures={allProcedures} attendings={attendings} />}
+              {view === 'archive' && <ArchiveView showFlash={showFlash} loadData={loadData} requireAdmin={requireAdmin} />}
             </>
           )}
         </div>
@@ -360,14 +419,17 @@ function DetailView({ attending, selectedProcedure, setSelectedProcedure, navTo,
   const handleDelete = async () => {
     if (!window.confirm(`Remove Dr. ${attending.name} and all their notes?`)) return;
     setDeleting(true);
+    // Archive the attending and all their prefs before deleting
+    await archiveItem('attending', `Dr. ${attending.name} (${attending.specialty})`, { attending, prefs: attending.prefs || [] });
     await supabase.from('attendings').delete().eq('id', attending.id);
     await loadData();
-    showFlash('Attending removed', 'error');
+    showFlash('Attending removed — saved to Archive', 'error');
     navTo('list');
   };
 
-  const handleDeletePref = async (prefId) => {
-    await supabase.from('preferences').delete().eq('id', prefId);
+  const handleDeletePref = async (pref) => {
+    await archiveItem('preference', `${pref.procedure} — ${pref.category} (Dr. ${attending.name})`, { pref, attending_name: attending.name });
+    await supabase.from('preferences').delete().eq('id', pref.id);
     await loadData();
   };
 
@@ -434,7 +496,7 @@ function DetailView({ attending, selectedProcedure, setSelectedProcedure, navTo,
                         <span style={{ ...S.miniTag, color: '#3a4a3a' }}>{new Date(p.created_at).toLocaleDateString()}</span>
                       </div>
                     </div>
-                    <button onClick={() => handleDeletePref(p.id)} style={{ background: 'none', border: 'none', color: '#3a3a3a', fontSize: 16, padding: 0, lineHeight: 1, flexShrink: 0, transition: 'color 0.15s' }} onMouseEnter={e => e.currentTarget.style.color='#8a4a3a'} onMouseLeave={e => e.currentTarget.style.color='#3a3a3a'}>×</button>
+                    <button onClick={() => handleDeletePref(p)} style={{ background: 'none', border: 'none', color: '#3a3a3a', fontSize: 16, padding: 0, lineHeight: 1, flexShrink: 0, transition: 'color 0.15s' }} onMouseEnter={e => e.currentTarget.style.color='#8a4a3a'} onMouseLeave={e => e.currentTarget.style.color='#3a3a3a'}>×</button>
                   </div>
                 ))}
               </div>
@@ -533,8 +595,9 @@ function ResourcesView({ allProcedures, showFlash }) {
     setShowAdd(false);
   };
 
-  const handleDelete = async (id) => {
-    await supabase.from('resources').delete().eq('id', id);
+  const handleDelete = async (r) => {
+    await archiveItem('resource', `${r.procedure} — ${r.title}`, { resource: r });
+    await supabase.from('resources').delete().eq('id', r.id);
     await loadResources();
   };
 
@@ -617,7 +680,7 @@ function ResourcesView({ allProcedures, showFlash }) {
                           >{r.title} ↗</a>
                           {r.notes && <div style={{ marginTop: 3, fontSize: 12, color: 'var(--text-muted)', fontStyle: 'italic' }}>{r.notes}</div>}
                         </div>
-                        <button onClick={() => handleDelete(r.id)} style={{ background: 'none', border: 'none', color: '#3a3a3a', fontSize: 16, padding: 0, lineHeight: 1, flexShrink: 0, transition: 'color 0.15s' }} onMouseEnter={e => e.currentTarget.style.color='#8a4a3a'} onMouseLeave={e => e.currentTarget.style.color='#3a3a3a'}>×</button>
+                        <button onClick={() => handleDelete(r)} style={{ background: 'none', border: 'none', color: '#3a3a3a', fontSize: 16, padding: 0, lineHeight: 1, flexShrink: 0, transition: 'color 0.15s' }} onMouseEnter={e => e.currentTarget.style.color='#8a4a3a'} onMouseLeave={e => e.currentTarget.style.color='#3a3a3a'}>×</button>
                       </div>
                     ))}
                   </div>
@@ -999,6 +1062,124 @@ function ProceduresView({ customProcedures, loadData, showFlash, allProcedures, 
           ))}
         </div>
       </div>
+    </div>
+  );
+}
+
+// ── Archive View ───────────────────────────────────────────────────────────
+function ArchiveView({ showFlash, loadData, requireAdmin }) {
+  const [items, setItems] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [filter, setFilter] = useState('all');
+  const [restoring, setRestoring] = useState(null);
+
+  const loadArchive = useCallback(async () => {
+    setLoading(true);
+    const { data } = await supabase.from('archive').select('*').order('deleted_at', { ascending: false });
+    setItems(data || []);
+    setLoading(false);
+  }, []);
+
+  useEffect(() => { loadArchive(); }, [loadArchive]);
+
+  const handleRestore = async (item) => {
+    setRestoring(item.id);
+    try {
+      if (item.type === 'attending') {
+        const { attending, prefs } = item.data;
+        const { data: newAtt } = await supabase.from('attendings').insert([{
+          name: attending.name, specialty: attending.specialty,
+          nickname: attending.nickname, notes: attending.notes
+        }]).select().single();
+        if (prefs && prefs.length > 0 && newAtt) {
+          const restoredPrefs = prefs.map(({ id, created_at, attending_id, ...rest }) => ({ ...rest, attending_id: newAtt.id }));
+          await supabase.from('preferences').insert(restoredPrefs);
+        }
+      } else if (item.type === 'preference') {
+        const { pref } = item.data;
+        const { id, created_at, ...rest } = pref;
+        await supabase.from('preferences').insert([rest]);
+      } else if (item.type === 'resource') {
+        const { resource } = item.data;
+        const { id, created_at, ...rest } = resource;
+        await supabase.from('resources').insert([rest]);
+      }
+      await supabase.from('archive').delete().eq('id', item.id);
+      await loadArchive();
+      await loadData();
+      showFlash(`"${item.label}" restored`);
+    } catch (e) {
+      showFlash('Restore failed', 'error');
+    }
+    setRestoring(null);
+  };
+
+  const handleClearArchive = async () => {
+    if (!window.confirm('Permanently delete all archived items? This cannot be undone.')) return;
+    await supabase.from('archive').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+    await loadArchive();
+    showFlash('Archive cleared', 'error');
+  };
+
+  const typeColors = { attending: '#8a6a3a', preference: '#4a7a6a', resource: '#6a4a8a' };
+  const typeLabels = { attending: 'Attending', preference: 'Preference Note', resource: 'Resource' };
+  const filtered = filter === 'all' ? items : items.filter(i => i.type === filter);
+
+  return (
+    <div className="fade-in">
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 6 }}>
+        <div>
+          <h2 style={S.sectionHead}>Archive</h2>
+          <p style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 20, fontStyle: 'italic' }}>
+            All deleted attendings, preference notes, and resources are saved here and can be restored.
+          </p>
+        </div>
+        {items.length > 0 && (
+          <button onClick={() => requireAdmin(handleClearArchive)} style={{ ...S.secondaryBtn, flexShrink: 0, color: 'var(--red)', borderColor: 'rgba(192,80,58,0.3)', fontSize: 10 }}>
+            🔒 Clear Archive
+          </button>
+        )}
+      </div>
+
+      {items.length > 0 && (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 20 }}>
+          {['all', 'attending', 'preference', 'resource'].map(f => (
+            <button key={f} onClick={() => setFilter(f)} style={{ ...S.tag, ...(filter === f ? S.tagActive : {}) }}>
+              {f === 'all' ? `All (${items.length})` : `${typeLabels[f]}s (${items.filter(i => i.type === f).length})`}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {loading ? (
+        <div style={{ textAlign: 'center', padding: 40 }}><Spinner /></div>
+      ) : filtered.length === 0 ? (
+        <div style={{ textAlign: 'center', padding: '50px 20px', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', fontSize: 12, border: '1px dashed rgba(255,255,255,0.07)', borderRadius: 6 }}>
+          {items.length === 0 ? 'No deleted items yet. The archive is empty.' : 'No items of this type in the archive.'}
+        </div>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {filtered.map(item => (
+            <div key={item.id} style={{ display: 'flex', gap: 12, alignItems: 'center', padding: '12px 16px', background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 'var(--radius)' }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 3, flexWrap: 'wrap' }}>
+                  <span style={{ fontSize: 10, letterSpacing: '0.12em', color: typeColors[item.type] || 'var(--text-muted)', fontFamily: 'var(--font-mono)', textTransform: 'uppercase', flexShrink: 0 }}>
+                    {typeLabels[item.type]}
+                  </span>
+                  <span style={{ fontSize: 14, color: 'var(--text)', fontFamily: 'var(--font-serif)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.label}</span>
+                </div>
+                <div style={{ fontSize: 11, color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>
+                  Deleted {new Date(item.deleted_at).toLocaleDateString()} at {new Date(item.deleted_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                </div>
+              </div>
+              <button onClick={() => handleRestore(item)} disabled={restoring === item.id}
+                style={{ ...S.secondaryBtn, fontSize: 10, flexShrink: 0, color: '#5aba8a', borderColor: 'rgba(90,186,138,0.3)' }}>
+                {restoring === item.id ? <Spinner /> : '↩ Restore'}
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
