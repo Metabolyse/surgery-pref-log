@@ -216,6 +216,7 @@ export default function App() {
     { key: 'opNote', label: 'Op Note' },
     { key: 'procedures', label: 'Procedures' },
     { key: 'serviceInfo', label: 'Service Info' },
+    { key: 'phoneBook', label: 'Phone Book' },
     { key: 'archive', label: 'Archive' },
   ];
 
@@ -271,6 +272,7 @@ export default function App() {
               {view === 'procedures' && <ProceduresView customProcedures={customProcedures} loadData={loadData} showFlash={showFlash} allProcedures={allProcedures} attendings={attendings} />}
               {view === 'archive' && <ArchiveView showFlash={showFlash} loadData={loadData} requireAdmin={requireAdmin} />}
               {view === 'serviceInfo' && <ServiceInfoView showFlash={showFlash} />}
+              {view === 'phoneBook' && <PhoneBookView showFlash={showFlash} />}
             </>
           )}
         </div>
@@ -1690,6 +1692,293 @@ function ServiceInfoView({ showFlash }) {
         )}
       </>)}
       </>)}
+    </div>
+  );
+}
+
+// ── Phone Book View ────────────────────────────────────────────────────────
+const SEED_CONTACTS = [
+  // Surgery Services/Admin
+  { name: 'Chief on call', number: '29990', category: 'Surgery Services' },
+  { name: 'ED Resident', number: '28929', category: 'Surgery Services' },
+  { name: 'Intern on call / Orange Jr', number: '29868', category: 'Surgery Services' },
+  { name: 'Green', number: '29869', category: 'Surgery Services' },
+  { name: 'Gold (ACS1) Jr', number: '29898', category: 'Surgery Services' },
+  { name: 'Red Chief', number: '29870', category: 'Surgery Services' },
+  { name: 'Red Jr', number: '29855', category: 'Surgery Services' },
+  { name: 'SICU Chief', number: '29867', category: 'Surgery Services' },
+  { name: 'Trauma Chief', number: '29859', category: 'Surgery Services' },
+  { name: 'Trauma Jr', number: '29858', category: 'Surgery Services' },
+  { name: 'Kayla (ACS1/Gold NP)', number: '28917', category: 'Surgery Services' },
+  { name: 'Kristen (ACS2/Blue NP)', number: '28918', category: 'Surgery Services' },
+  { name: 'Erin Madden', number: '27352', category: 'Surgery Services' },
+  { name: 'ASP/Trauma Clinic', number: '23971', category: 'Surgery Services' },
+  { name: 'Paging', number: '28888', category: 'Surgery Services' },
+  { name: 'Med Staff Support', number: '29000', category: 'Surgery Services' },
+  // Ancillary Services
+  { name: 'Bob Hoover, IPR', number: '28674', category: 'Ancillary Services' },
+  { name: 'CM Weekend', number: '22671', category: 'Ancillary Services' },
+  { name: 'Cole Mepham, CM', number: '20837', category: 'Ancillary Services' },
+  { name: 'Colleen Clark, CM', number: '20839', category: 'Ancillary Services' },
+  { name: 'Great Lakes Orthotics', number: '24576', category: 'Ancillary Services' },
+  { name: 'Janet Weisz, 2E Nutrition', number: '26224', category: 'Ancillary Services' },
+  { name: 'Jason Hecht, SICU PRH', number: '26223', category: 'Ancillary Services' },
+  { name: 'Joan Zurkan, 8E Nutrition', number: '26846', category: 'Ancillary Services' },
+  { name: 'Kara Brockhaus, 2E/8E PRH', number: '26847', category: 'Ancillary Services' },
+  { name: 'PT/OT/SLP', number: '22365', category: 'Ancillary Services' },
+  { name: 'Rachel Lang, SW', number: '26470', category: 'Ancillary Services' },
+  { name: 'SW Weekend', number: '29508', category: 'Ancillary Services' },
+  { name: 'Pharm – Coag RPH', number: '26719', category: 'Ancillary Services' },
+  { name: 'Pharm – Renal RPH', number: '26947', category: 'Ancillary Services' },
+  { name: 'Psych Access', number: '22762', category: 'Ancillary Services' },
+  { name: 'ED Medication Historian', number: '29489', category: 'Ancillary Services' },
+  // Imaging
+  { name: 'Radiology Main Desk', number: '2-RADS', category: 'Imaging' },
+  { name: 'Breast Imaging Center', number: '25907', category: 'Imaging' },
+  { name: 'Cardiac Cath Lab', number: '23737', category: 'Imaging' },
+  { name: 'CT Main', number: '23442', category: 'Imaging' },
+  { name: 'Echo Lab', number: '28638', category: 'Imaging' },
+  { name: 'IR / Angio', number: '23662 / 28697', category: 'Imaging' },
+  { name: 'MRI Front', number: '24958', category: 'Imaging' },
+  { name: 'MRI Tech', number: '25340', category: 'Imaging' },
+  { name: 'Nuclear Medicine', number: '27130 / 21328', category: 'Imaging' },
+  { name: 'Vascular Lab', number: '28606', category: 'Imaging' },
+  { name: 'XR Tech', number: '23947', category: 'Imaging' },
+  { name: 'XR Portable', number: '28945', category: 'Imaging' },
+  // Other Services
+  { name: 'Acute Pain Service RN (APS)', number: '29480', category: 'Other Services', notes: 'Weekends: call attending' },
+  { name: 'Acute Pain Service Attending', number: '29827', category: 'Other Services' },
+  { name: 'STAT Intubation', number: '29326', category: 'Other Services' },
+  { name: 'CT Surgery APP', number: '29856', category: 'Other Services' },
+  { name: 'ENT APP', number: '66055', category: 'Other Services' },
+  { name: 'GI Rounder', number: '29897', category: 'Other Services' },
+  { name: 'IHA Triage', number: '29332', category: 'Other Services' },
+  { name: 'IHA Tech Support', number: '734-327-0388', category: 'Other Services' },
+  { name: 'MICU Resident', number: '29321', category: 'Other Services' },
+  { name: 'Neurosurgery APP', number: '20832', category: 'Other Services' },
+  { name: 'OB Chief', number: '29937', category: 'Other Services' },
+  { name: 'Ortho APP', number: '29589', category: 'Other Services' },
+  { name: 'Ortho Resident', number: '29441', category: 'Other Services' },
+  { name: 'PICC Team', number: '25759', category: 'Other Services' },
+  { name: 'STAT RN', number: '20801', category: 'Other Services' },
+  { name: 'Urology APP', number: '26569', category: 'Other Services' },
+  { name: 'Cardiology Rounder', number: '29811', category: 'Other Services' },
+  // Departments
+  { name: 'Anesthesia In Charge (AIC)', number: '20747', category: 'Departments' },
+  { name: 'Blood Bank', number: '23158 / 23189', category: 'Departments' },
+  { name: 'Central Scheduling', number: '21313', category: 'Departments' },
+  { name: 'CSPD', number: '26880', category: 'Departments' },
+  { name: 'Hemodialysis', number: '23476', category: 'Departments' },
+  { name: 'Lab, Inpatient', number: '23141', category: 'Departments' },
+  { name: 'Main OR Front Desk', number: '23860', category: 'Departments' },
+  { name: 'Main OR Pre-op', number: '24044', category: 'Departments' },
+  { name: 'Main OR PACU', number: '24013', category: 'Departments' },
+  { name: 'Main OR Rooms', number: '239xx (x = room #)', category: 'Departments' },
+  { name: 'Micro Lab', number: '24235', category: 'Departments' },
+  { name: 'OSC Charge', number: '28993', category: 'Departments' },
+  { name: 'OSC Pre-op', number: '21565', category: 'Departments' },
+  { name: 'OSC PACU', number: '25045', category: 'Departments' },
+  { name: 'OR Ted', number: '20738', category: 'Departments' },
+  { name: 'Pt Resource Mgmt (PRM)', number: '24242', category: 'Departments' },
+  { name: 'Pathology', number: '23326', category: 'Departments' },
+  { name: 'Pharmacy, Inpatient', number: '25709', category: 'Departments' },
+  { name: 'SICU Charge', number: '29230', category: 'Departments' },
+  { name: 'Select', number: '734-337-1100', category: 'Departments' },
+  { name: 'Short Stay', number: '28943', category: 'Departments' },
+  { name: 'East Pt Floors', number: '26x01 (x = floor #)', category: 'Departments' },
+  { name: '2N/SICU Clerk', number: '26251', category: 'Departments' },
+  { name: '5N', number: '28570', category: 'Departments' },
+  { name: '6N', number: '28580', category: 'Departments' },
+  { name: 'ED Observation Center', number: '24851', category: 'Departments' },
+  { name: 'ER Team 1', number: '23001', category: 'Departments' },
+  { name: 'ER Team 2', number: '23002', category: 'Departments' },
+  { name: 'ER Team 3', number: '23003', category: 'Departments' },
+  { name: 'ER Team 5', number: '22760', category: 'Departments' },
+  { name: 'MICU Desk', number: '26672 / 26651', category: 'Departments' },
+];
+
+const PHONE_CATEGORIES = ['Surgery Services', 'Ancillary Services', 'Imaging', 'Other Services', 'Departments'];
+
+function PhoneBookView({ showFlash }) {
+  const [contacts, setContacts] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState('');
+  const [activeCategory, setActiveCategory] = useState('All');
+  const [showAdd, setShowAdd] = useState(false);
+  const [editingContact, setEditingContact] = useState(null);
+  const [form, setForm] = useState({ name: '', number: '', category: PHONE_CATEGORIES[0], notes: '' });
+  const [saving, setSaving] = useState(false);
+
+  const loadContacts = useCallback(async () => {
+    setLoading(true);
+    const { data } = await supabase.from('phone_book').select('*').order('category').order('name');
+    if (!data || data.length === 0) {
+      // Seed with St Joe's data on first load
+      await supabase.from('phone_book').insert(SEED_CONTACTS);
+      const { data: seeded } = await supabase.from('phone_book').select('*').order('category').order('name');
+      setContacts(seeded || []);
+    } else {
+      setContacts(data);
+    }
+    setLoading(false);
+  }, []);
+
+  useEffect(() => { loadContacts(); }, [loadContacts]);
+
+  const handleSave = async () => {
+    if (!form.name.trim() || !form.number.trim()) return;
+    setSaving(true);
+    if (editingContact) {
+      await supabase.from('phone_book').update(form).eq('id', editingContact.id);
+      showFlash('Contact updated');
+    } else {
+      await supabase.from('phone_book').insert([form]);
+      showFlash('Contact added');
+    }
+    setSaving(false);
+    await loadContacts();
+    setForm({ name: '', number: '', category: activeCategory === 'All' ? PHONE_CATEGORIES[0] : activeCategory, notes: '' });
+    setShowAdd(false);
+    setEditingContact(null);
+  };
+
+  const handleEdit = (c) => {
+    setEditingContact(c);
+    setForm({ name: c.name, number: c.number, category: c.category, notes: c.notes || '' });
+    setShowAdd(true);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const handleDelete = async (c) => {
+    await archiveItem('phone_book', `${c.name} — ${c.number}`, { contact: c });
+    await supabase.from('phone_book').delete().eq('id', c.id);
+    await loadContacts();
+    showFlash('Contact removed — saved to Archive', 'error');
+  };
+
+  const handleCancel = () => {
+    setShowAdd(false);
+    setEditingContact(null);
+    setForm({ name: '', number: '', category: activeCategory === 'All' ? PHONE_CATEGORIES[0] : activeCategory, notes: '' });
+  };
+
+  const allCategories = ['All', ...PHONE_CATEGORIES, ...([...new Set(contacts.map(c => c.category))].filter(c => !PHONE_CATEGORIES.includes(c)))];
+  const catCounts = allCategories.reduce((acc, cat) => {
+    acc[cat] = cat === 'All' ? contacts.length : contacts.filter(c => c.category === cat).length;
+    return acc;
+  }, {});
+
+  const filtered = contacts.filter(c => {
+    const matchCat = activeCategory === 'All' || c.category === activeCategory;
+    const matchSearch = !search || c.name.toLowerCase().includes(search.toLowerCase()) || c.number.includes(search) || (c.notes || '').toLowerCase().includes(search.toLowerCase());
+    return matchCat && matchSearch;
+  });
+
+  // Group by category for display
+  const grouped = filtered.reduce((acc, c) => {
+    if (!acc[c.category]) acc[c.category] = [];
+    acc[c.category].push(c);
+    return acc;
+  }, {});
+
+  const catColors = { 'Surgery Services': '#8a6a3a', 'Ancillary Services': '#4a7a6a', 'Imaging': '#4a6a8a', 'Other Services': '#7a6a4a', 'Departments': '#6a4a8a' };
+
+  return (
+    <div className="fade-in">
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 6 }}>
+        <div>
+          <h2 style={S.sectionHead}>Phone Book</h2>
+          <p style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 6, fontStyle: 'italic' }}>
+            St. Joe's internal directory. <span style={{ color: '#6a7a5a' }}>Dial 991 + ext for outside calls · From outside add 734-71</span>
+          </p>
+        </div>
+        {!showAdd && (
+          <button onClick={() => { setShowAdd(true); setForm({ name: '', number: '', category: activeCategory === 'All' ? PHONE_CATEGORIES[0] : activeCategory, notes: '' }); }}
+            style={{ ...S.secondaryBtn, flexShrink: 0 }}>+ Add</button>
+        )}
+      </div>
+
+      {/* Search */}
+      <input value={search} onChange={e => setSearch(e.target.value)}
+        placeholder="Search by name or number..."
+        style={{ marginBottom: 16, width: '100%', boxSizing: 'border-box' }} />
+
+      {/* Category filter tabs */}
+      <div style={{ display: 'flex', gap: 0, flexWrap: 'wrap', borderBottom: '1px solid var(--border)', marginBottom: 22, overflowX: 'auto' }}>
+        {allCategories.map(cat => (
+          <button key={cat} onClick={() => setActiveCategory(cat)} style={{
+            background: 'none', border: 'none',
+            borderBottom: activeCategory === cat ? `2px solid ${catColors[cat] || 'var(--gold)'}` : '2px solid transparent',
+            color: activeCategory === cat ? (catColors[cat] || 'var(--gold)') : 'var(--text-muted)',
+            padding: '8px 14px', fontSize: 11, letterSpacing: '0.1em', textTransform: 'uppercase',
+            marginBottom: -1, cursor: 'pointer', whiteSpace: 'nowrap', transition: 'all 0.15s',
+            fontFamily: 'var(--font-mono)'
+          }}>
+            {cat}
+            {catCounts[cat] > 0 && <span style={{ marginLeft: 5, fontSize: 10, opacity: 0.5 }}>{catCounts[cat]}</span>}
+          </button>
+        ))}
+      </div>
+
+      {/* Add / Edit form */}
+      {showAdd && (
+        <div style={{ ...S.card, marginBottom: 24, background: 'var(--bg3)', borderColor: 'rgba(180,140,60,0.2)' }}>
+          <div style={{ fontSize: 10, letterSpacing: '0.18em', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', marginBottom: 14, textTransform: 'uppercase' }}>
+            {editingContact ? 'Edit Contact' : 'New Contact'}
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 12 }}>
+              <Field label="Name *"><input value={form.name} onChange={e => setForm({...form, name: e.target.value})} placeholder="e.g. SICU Charge" autoFocus /></Field>
+              <Field label="Number *"><input value={form.number} onChange={e => setForm({...form, number: e.target.value})} placeholder="e.g. 29230" /></Field>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+              <Field label="Category">
+                <select value={form.category} onChange={e => setForm({...form, category: e.target.value})}>
+                  {allCategories.filter(c => c !== 'All').map(c => <option key={c}>{c}</option>)}
+                </select>
+              </Field>
+              <Field label="Notes (optional)"><input value={form.notes} onChange={e => setForm({...form, notes: e.target.value})} placeholder="e.g. Weekends only" /></Field>
+            </div>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button onClick={handleCancel} style={{ ...S.secondaryBtn, flex: 1 }}>Cancel</button>
+              <button onClick={handleSave} style={{ ...S.primaryBtn, flex: 3 }} disabled={saving}>
+                {saving ? <Spinner /> : editingContact ? 'Save Changes' : 'Add Contact'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {loading ? (
+        <div style={{ textAlign: 'center', padding: 40 }}><Spinner /></div>
+      ) : filtered.length === 0 ? (
+        <div style={{ textAlign: 'center', padding: '40px 20px', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', fontSize: 12, border: '1px dashed rgba(255,255,255,0.07)', borderRadius: 6 }}>
+          No contacts found.
+        </div>
+      ) : (
+        Object.entries(grouped).map(([cat, items]) => (
+          <div key={cat} style={{ marginBottom: 28 }}>
+            {activeCategory === 'All' && (
+              <div style={{ ...S.divider, borderBottomColor: catColors[cat] ? `${catColors[cat]}44` : undefined, color: catColors[cat] || 'var(--text-muted)' }}>{cat}</div>
+            )}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              {items.map(c => (
+                <div key={c.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '9px 14px', background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 'var(--radius)', borderLeft: `3px solid ${catColors[c.category] || '#4a5a6a'}` }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 14, color: 'var(--text)', fontFamily: 'var(--font-serif)' }}>{c.name}</div>
+                    {c.notes && <div style={{ fontSize: 11, color: 'var(--text-muted)', fontStyle: 'italic', marginTop: 1 }}>{c.notes}</div>}
+                  </div>
+                  <div style={{ fontSize: 16, color: '#7aacca', fontFamily: 'var(--font-mono)', letterSpacing: '0.06em', flexShrink: 0 }}>{c.number}</div>
+                  <button onClick={() => handleEdit(c)} style={{ ...S.ghostBtn, fontSize: 11, color: '#4a6a7a', flexShrink: 0 }}>edit</button>
+                  <button onClick={() => handleDelete(c)} style={{ background: 'none', border: 'none', color: '#5a3a2a', fontSize: 15, padding: 0, cursor: 'pointer', transition: 'color 0.15s', flexShrink: 0 }}
+                    onMouseEnter={e => e.currentTarget.style.color = 'var(--red)'}
+                    onMouseLeave={e => e.currentTarget.style.color = '#5a3a2a'}>×</button>
+                </div>
+              ))}
+            </div>
+          </div>
+        ))
+      )}
     </div>
   );
 }
