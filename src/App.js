@@ -3,7 +3,8 @@ import { supabase } from './supabaseClient';
 import './index.css';
 
 // ── Constants ──────────────────────────────────────────────────────────────
-const SPECIALTIES = ['General Surgery','Colorectal','Hepatobiliary','Foregut','Endocrine','Trauma','Vascular','Thoracic','Other'];
+const DEFAULT_SPECIALTIES = ['General Surgery','Colorectal','Hepatobiliary','Foregut','Endocrine','Trauma','Vascular','Thoracic','Other'];
+const SERVICE_INFO_CATEGORIES = ['Expectations','Follow-up Visits','Post-op Imaging','Post-op Labs','Dot Phrases','Consult Tips','Floor Management','Other'];
 const PREF_CATEGORIES = ['Positioning','Prep & Drape','Port Placement','Instrument Preference','Dissection Technique','Critical Steps','Closure','Pet Peeves','Post-op Orders','Other'];
 const RESOURCE_CATEGORIES = ['Video','Atlas / Images','Guidelines','Article','Textbook','Other'];
 const DEFAULT_PROCEDURES = [
@@ -95,6 +96,7 @@ export default function App() {
   const [view, setView] = useState('list');
   const [attendings, setAttendings] = useState([]);
   const [customProcedures, setCustomProcedures] = useState([]);
+  const [customSpecialties, setCustomSpecialties] = useState([]);
   const [selectedAttending, setSelectedAttending] = useState(null);
   const [selectedProcedure, setSelectedProcedure] = useState(null);
   const [search, setSearch] = useState('');
@@ -118,6 +120,7 @@ export default function App() {
 
   const hiddenDefaults = customProcedures.filter(p => p.name.startsWith('__HIDDEN__')).map(p => p.name.replace('__HIDDEN__', ''));
   const allProcedures = [...new Set([...DEFAULT_PROCEDURES.filter(p => !hiddenDefaults.includes(p)), ...customProcedures.filter(p => !p.name.startsWith('__HIDDEN__')).map(p => p.name)])].sort();
+  const allSpecialties = [...new Set([...DEFAULT_SPECIALTIES, ...customSpecialties.map(s => s.name)])].sort();
 
   const showFlash = useCallback((msg, type = 'success') => {
     setFlash({ msg, type });
@@ -128,10 +131,11 @@ export default function App() {
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
-      const [{ data: att }, { data: prefs }, { data: cp }] = await Promise.all([
+      const [{ data: att }, { data: prefs }, { data: cp }, { data: cs }] = await Promise.all([
         supabase.from('attendings').select('*').order('name'),
         supabase.from('preferences').select('*').order('created_at'),
         supabase.from('custom_procedures').select('*').order('name'),
+        supabase.from('custom_specialties').select('*').order('name'),
       ]);
       const attendingsWithPrefs = (att || []).map(a => ({
         ...a,
@@ -139,6 +143,7 @@ export default function App() {
       }));
       setAttendings(attendingsWithPrefs);
       setCustomProcedures(cp || []);
+      setCustomSpecialties(cs || []);
     } catch (e) {
       showFlash('Error loading data', 'error');
     }
@@ -206,6 +211,7 @@ export default function App() {
     { key: 'resources', label: 'Resources' },
     { key: 'opNote', label: 'Op Note' },
     { key: 'procedures', label: 'Procedures' },
+    { key: 'serviceInfo', label: 'Service Info' },
     { key: 'archive', label: 'Archive' },
   ];
 
@@ -240,7 +246,7 @@ export default function App() {
           {/* Tabs — always visible */}
           <div style={{ display: 'flex', gap: 0, overflowX: 'auto' }}>
             {TABS.map(t => (
-              <button key={t.key} onClick={() => setView(t.key)} style={{ background: 'none', border: 'none', borderBottom: (t.key === 'list' ? ['list','detail','addAttending','addNote'].includes(view) : view === t.key) ? '2px solid var(--gold)' : '2px solid transparent', color: (t.key === 'list' ? ['list','detail','addAttending','addNote'].includes(view) : view === t.key) ? 'var(--gold)' : 'var(--text-muted)', padding: '10px 16px', fontSize: 11, letterSpacing: '0.12em', textTransform: 'uppercase', marginBottom: -1, transition: 'all 0.15s', cursor: 'pointer', whiteSpace: 'nowrap' }}>
+              <button key={t.key} onClick={() => setView(t.key)} style={{ background: 'none', border: 'none', borderBottom: (t.key === 'list' ? ['list','detail','addAttending','addNote'].includes(view) : t.key === 'serviceInfo' ? view === 'serviceInfo' : view === t.key) ? '2px solid var(--gold)' : '2px solid transparent', color: (t.key === 'list' ? ['list','detail','addAttending','addNote'].includes(view) : t.key === 'serviceInfo' ? view === 'serviceInfo' : view === t.key) ? 'var(--gold)' : 'var(--text-muted)', padding: '10px 16px', fontSize: 11, letterSpacing: '0.12em', textTransform: 'uppercase', marginBottom: -1, transition: 'all 0.15s', cursor: 'pointer', whiteSpace: 'nowrap' }}>
                 {t.label}
               </button>
             ))}
@@ -253,13 +259,14 @@ export default function App() {
           ) : (
             <>
               {view === 'list' && <ListView attendings={filtered} search={search} setSearch={setSearch} navTo={navTo} showFlash={showFlash} loadData={loadData} allProcedures={allProcedures} />}
-              {view === 'addAttending' && <AddAttendingView navTo={navTo} showFlash={showFlash} loadData={loadData} />}
-              {view === 'detail' && selectedAttending && <DetailView attending={selectedAttending} selectedProcedure={selectedProcedure} setSelectedProcedure={setSelectedProcedure} navTo={navTo} showFlash={showFlash} loadData={loadData} getProceduresForAttending={getProceduresForAttending} getPrefsForProcedure={getPrefsForProcedure} allProcedures={allProcedures} />}
+              {view === 'addAttending' && <AddAttendingView navTo={navTo} showFlash={showFlash} loadData={loadData} allSpecialties={allSpecialties} customSpecialties={customSpecialties} />}
+              {view === 'detail' && selectedAttending && <DetailView attending={selectedAttending} selectedProcedure={selectedProcedure} setSelectedProcedure={setSelectedProcedure} navTo={navTo} showFlash={showFlash} loadData={loadData} getProceduresForAttending={getProceduresForAttending} getPrefsForProcedure={getPrefsForProcedure} allProcedures={allProcedures} allSpecialties={allSpecialties} customSpecialties={customSpecialties} />}
               {view === 'addNote' && selectedAttending && <AddNoteView attending={selectedAttending} selectedProcedure={selectedProcedure} navTo={navTo} showFlash={showFlash} loadData={loadData} allProcedures={allProcedures} />}
               {view === 'resources' && <ResourcesView allProcedures={allProcedures} showFlash={showFlash} />}
               {view === 'opNote' && <OpNoteView allProcedures={allProcedures} attendings={attendings} getPrefsForProcedure={getPrefsForProcedure} />}
               {view === 'procedures' && <ProceduresView customProcedures={customProcedures} loadData={loadData} showFlash={showFlash} allProcedures={allProcedures} attendings={attendings} />}
               {view === 'archive' && <ArchiveView showFlash={showFlash} loadData={loadData} requireAdmin={requireAdmin} />}
+              {view === 'serviceInfo' && <ServiceInfoView showFlash={showFlash} />}
             </>
           )}
         </div>
@@ -311,15 +318,50 @@ function ListView({ attendings, search, setSearch, navTo, showFlash, loadData })
   );
 }
 
+// ── Specialty Picker (reusable) ────────────────────────────────────────────
+function SpecialtyPicker({ selected, onChange, allSpecialties, loadData, showFlash }) {
+  const [newSpec, setNewSpec] = useState('');
+  const [addingNew, setAddingNew] = useState(false);
+  const toggle = (s) => onChange(selected.includes(s) ? selected.filter(x => x !== s) : [...selected, s]);
+  const handleAddNew = async () => {
+    const trimmed = newSpec.trim();
+    if (!trimmed || allSpecialties.includes(trimmed)) { setAddingNew(false); setNewSpec(''); return; }
+    const { error } = await supabase.from('custom_specialties').insert([{ name: trimmed }]);
+    if (error) { showFlash('Error adding specialty', 'error'); return; }
+    await loadData();
+    onChange([...selected, trimmed]);
+    setNewSpec(''); setAddingNew(false);
+    showFlash(`"${trimmed}" added`);
+  };
+  return (
+    <div>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>
+        {allSpecialties.map(s => (
+          <button key={s} onClick={() => toggle(s)} style={{ ...S.tag, ...(selected.includes(s) ? S.tagActive : {}) }}>{s}</button>
+        ))}
+      </div>
+      {addingNew ? (
+        <div style={{ display: 'flex', gap: 8, marginTop: 6 }}>
+          <input value={newSpec} onChange={e => setNewSpec(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleAddNew()} placeholder="New specialty name..." autoFocus style={{ flex: 1 }} />
+          <button onClick={handleAddNew} style={S.secondaryBtn}>Add</button>
+          <button onClick={() => { setAddingNew(false); setNewSpec(''); }} style={{ ...S.secondaryBtn, color: 'var(--text-muted)' }}>Cancel</button>
+        </div>
+      ) : (
+        <button onClick={() => setAddingNew(true)} style={{ ...S.ghostBtn, fontSize: 11, marginTop: 4 }}>+ Add new specialty</button>
+      )}
+    </div>
+  );
+}
+
 // ── Add Attending ──────────────────────────────────────────────────────────
-function AddAttendingView({ navTo, showFlash, loadData }) {
-  const [form, setForm] = useState({ name: '', specialty: 'General Surgery', nickname: '', notes: '' });
+function AddAttendingView({ navTo, showFlash, loadData, allSpecialties, customSpecialties }) {
+  const [form, setForm] = useState({ name: '', specialties: [], nickname: '', notes: '' });
   const [saving, setSaving] = useState(false);
 
   const handleSave = async () => {
     if (!form.name.trim()) return;
     setSaving(true);
-    const { error } = await supabase.from('attendings').insert([form]);
+    const { error } = await supabase.from('attendings').insert([{ ...form, specialty: form.specialties.join(', ') }]);
     setSaving(false);
     if (error) { showFlash('Error saving attending', 'error'); return; }
     await loadData();
@@ -335,10 +377,8 @@ function AddAttendingView({ navTo, showFlash, loadData }) {
       <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
         <Field label="Last Name *"><input value={form.name} onChange={e => setForm({...form, name: e.target.value})} placeholder="e.g. Patel" /></Field>
         <Field label="Nickname / OR Persona"><input value={form.nickname} onChange={e => setForm({...form, nickname: e.target.value})} placeholder='e.g. "The Whipple King"' /></Field>
-        <Field label="Specialty">
-          <select value={form.specialty} onChange={e => setForm({...form, specialty: e.target.value})}>
-            {SPECIALTIES.map(s => <option key={s}>{s}</option>)}
-          </select>
+        <Field label="Specialties (select all that apply)">
+          <SpecialtyPicker selected={form.specialties} onChange={v => setForm({...form, specialties: v})} allSpecialties={allSpecialties} loadData={loadData} showFlash={showFlash} />
         </Field>
         <Field label="General Notes"><textarea value={form.notes} onChange={e => setForm({...form, notes: e.target.value})} placeholder="Personality, communication style, general things to know..." rows={3} /></Field>
         <button onClick={handleSave} style={S.primaryBtn} disabled={saving}>
@@ -412,14 +452,50 @@ function ProcedureResourcesInline({ procedure }) {
 }
 
 // ── Detail View ────────────────────────────────────────────────────────────
-function DetailView({ attending, selectedProcedure, setSelectedProcedure, navTo, showFlash, loadData, getProceduresForAttending, getPrefsForProcedure, allProcedures }) {
+function DetailView({ attending, selectedProcedure, setSelectedProcedure, navTo, showFlash, loadData, getProceduresForAttending, getPrefsForProcedure, allProcedures, allSpecialties, customSpecialties }) {
   const [deleting, setDeleting] = useState(false);
+  const [editingAttending, setEditingAttending] = useState(false);
+  const [editingPref, setEditingPref] = useState(null); // pref object being edited
+  const [editForm, setEditForm] = useState({ name: '', specialties: [], nickname: '', notes: '' });
+  const [editPrefForm, setEditPrefForm] = useState({ procedure: '', category: '', note: '', critical: false });
+  const [saving, setSaving] = useState(false);
   const procedures = getProceduresForAttending(attending);
+
+  const openEditAttending = () => {
+    const specs = attending.specialty ? attending.specialty.split(', ').filter(Boolean) : [];
+    setEditForm({ name: attending.name, specialties: specs, nickname: attending.nickname || '', notes: attending.notes || '' });
+    setEditingAttending(true);
+  };
+
+  const saveAttending = async () => {
+    setSaving(true);
+    await supabase.from('attendings').update({
+      name: editForm.name, nickname: editForm.nickname,
+      notes: editForm.notes, specialty: editForm.specialties.join(', ')
+    }).eq('id', attending.id);
+    setSaving(false);
+    await loadData();
+    showFlash('Attending updated');
+    setEditingAttending(false);
+  };
+
+  const openEditPref = (p) => {
+    setEditingPref(p);
+    setEditPrefForm({ procedure: p.procedure, category: p.category, note: p.note, critical: p.critical });
+  };
+
+  const savePref = async () => {
+    setSaving(true);
+    await supabase.from('preferences').update(editPrefForm).eq('id', editingPref.id);
+    setSaving(false);
+    await loadData();
+    showFlash('Preference updated');
+    setEditingPref(null);
+  };
 
   const handleDelete = async () => {
     if (!window.confirm(`Remove Dr. ${attending.name} and all their notes?`)) return;
     setDeleting(true);
-    // Archive the attending and all their prefs before deleting
     await archiveItem('attending', `Dr. ${attending.name} (${attending.specialty})`, { attending, prefs: attending.prefs || [] });
     await supabase.from('attendings').delete().eq('id', attending.id);
     await loadData();
@@ -443,10 +519,64 @@ function DetailView({ attending, selectedProcedure, setSelectedProcedure, navTo,
 
   return (
     <div className="fade-in">
+      {/* Edit Pref Modal */}
+      {editingPref && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.75)', zIndex: 500, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+          <div style={{ background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 8, padding: 24, width: '100%', maxWidth: 500, boxShadow: '0 8px 40px rgba(0,0,0,0.6)' }}>
+            <div style={{ fontSize: 14, color: 'var(--text)', fontFamily: 'var(--font-serif)', marginBottom: 20 }}>Edit Preference</div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              <Field label="Procedure">
+                <select value={editPrefForm.procedure} onChange={e => setEditPrefForm({...editPrefForm, procedure: e.target.value})}>
+                  {allProcedures.map(p => <option key={p}>{p}</option>)}
+                </select>
+              </Field>
+              <Field label="Category">
+                <select value={editPrefForm.category} onChange={e => setEditPrefForm({...editPrefForm, category: e.target.value})}>
+                  {PREF_CATEGORIES.map(c => <option key={c}>{c}</option>)}
+                </select>
+              </Field>
+              <Field label="Note">
+                <textarea value={editPrefForm.note} onChange={e => setEditPrefForm({...editPrefForm, note: e.target.value})} rows={4} />
+              </Field>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }}>
+                <input type="checkbox" checked={editPrefForm.critical} onChange={e => setEditPrefForm({...editPrefForm, critical: e.target.checked})} style={{ width: 14, height: 14, accentColor: 'var(--red)', margin: 0 }} />
+                <span style={{ fontSize: 13, color: 'var(--red)', fontFamily: 'var(--font-mono)', letterSpacing: '0.04em' }}>Critical / pet peeve</span>
+              </label>
+            </div>
+            <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
+              <button onClick={() => setEditingPref(null)} style={{ ...S.secondaryBtn, flex: 1 }}>Cancel</button>
+              <button onClick={savePref} style={{ ...S.primaryBtn, flex: 2 }} disabled={saving}>{saving ? <Spinner /> : 'Save Changes'}</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Attending Modal */}
+      {editingAttending && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.75)', zIndex: 500, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+          <div style={{ background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 8, padding: 24, width: '100%', maxWidth: 500, boxShadow: '0 8px 40px rgba(0,0,0,0.6)', maxHeight: '90vh', overflowY: 'auto' }}>
+            <div style={{ fontSize: 14, color: 'var(--text)', fontFamily: 'var(--font-serif)', marginBottom: 20 }}>Edit Dr. {attending.name}</div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              <Field label="Last Name"><input value={editForm.name} onChange={e => setEditForm({...editForm, name: e.target.value})} /></Field>
+              <Field label="Nickname"><input value={editForm.nickname} onChange={e => setEditForm({...editForm, nickname: e.target.value})} /></Field>
+              <Field label="Specialties">
+                <SpecialtyPicker selected={editForm.specialties} onChange={v => setEditForm({...editForm, specialties: v})} allSpecialties={allSpecialties} loadData={loadData} showFlash={showFlash} />
+              </Field>
+              <Field label="General Notes"><textarea value={editForm.notes} onChange={e => setEditForm({...editForm, notes: e.target.value})} rows={3} /></Field>
+            </div>
+            <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
+              <button onClick={() => setEditingAttending(false)} style={{ ...S.secondaryBtn, flex: 1 }}>Cancel</button>
+              <button onClick={saveAttending} style={{ ...S.primaryBtn, flex: 2 }} disabled={saving}>{saving ? <Spinner /> : 'Save Changes'}</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
         <button onClick={() => navTo('list')} style={S.backBtn}>← All Attendings</button>
         <div style={{ display: 'flex', gap: 16 }}>
           <button onClick={() => navTo('opNote')} style={{ ...S.ghostBtn, color: '#6a8a7a' }}>Op Note ↗</button>
+          <button onClick={openEditAttending} style={{ ...S.ghostBtn, color: '#6a8a9a' }}>Edit</button>
           <button onClick={handleDelete} disabled={deleting} style={{ ...S.ghostBtn, color: '#7a4a3a' }}>Remove</button>
         </div>
       </div>
@@ -496,6 +626,7 @@ function DetailView({ attending, selectedProcedure, setSelectedProcedure, navTo,
                         <span style={{ ...S.miniTag, color: '#3a4a3a' }}>{new Date(p.created_at).toLocaleDateString()}</span>
                       </div>
                     </div>
+                    <button onClick={() => openEditPref(p)} style={{ background: 'none', border: 'none', color: '#4a6a7a', cursor: 'pointer', fontSize: 11, fontFamily: 'var(--font-mono)', padding: '0 6px', flexShrink: 0 }}>edit</button>
                     <button onClick={() => handleDeletePref(p)} style={{ background: 'none', border: 'none', color: '#3a3a3a', fontSize: 16, padding: 0, lineHeight: 1, flexShrink: 0, transition: 'color 0.15s' }} onMouseEnter={e => e.currentTarget.style.color='#8a4a3a'} onMouseLeave={e => e.currentTarget.style.color='#3a3a3a'}>×</button>
                   </div>
                 ))}
@@ -1176,6 +1307,188 @@ function ArchiveView({ showFlash, loadData, requireAdmin }) {
                 style={{ ...S.secondaryBtn, fontSize: 10, flexShrink: 0, color: '#5aba8a', borderColor: 'rgba(90,186,138,0.3)' }}>
                 {restoring === item.id ? <Spinner /> : '↩ Restore'}
               </button>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Service Info View ──────────────────────────────────────────────────────
+function ServiceInfoView({ showFlash }) {
+  const [items, setItems] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [activeCategory, setActiveCategory] = useState(SERVICE_INFO_CATEGORIES[0]);
+  const [showAdd, setShowAdd] = useState(false);
+  const [editingItem, setEditingItem] = useState(null);
+  const [form, setForm] = useState({ title: '', body: '', category: SERVICE_INFO_CATEGORIES[0] });
+  const [saving, setSaving] = useState(false);
+
+  const loadItems = useCallback(async () => {
+    setLoading(true);
+    const { data } = await supabase.from('service_info').select('*').order('category').order('created_at');
+    setItems(data || []);
+    setLoading(false);
+  }, []);
+
+  useEffect(() => { loadItems(); }, [loadItems]);
+
+  const handleSave = async () => {
+    if (!form.title.trim() || !form.body.trim()) return;
+    setSaving(true);
+    if (editingItem) {
+      await supabase.from('service_info').update({ title: form.title, body: form.body, category: form.category }).eq('id', editingItem.id);
+      showFlash('Entry updated');
+    } else {
+      await supabase.from('service_info').insert([form]);
+      showFlash('Entry added');
+    }
+    setSaving(false);
+    await loadItems();
+    setForm({ title: '', body: '', category: activeCategory });
+    setShowAdd(false);
+    setEditingItem(null);
+  };
+
+  const handleEdit = (item) => {
+    setEditingItem(item);
+    setForm({ title: item.title, body: item.body, category: item.category });
+    setShowAdd(true);
+  };
+
+  const handleDelete = async (item) => {
+    await archiveItem('service_info', `${item.category} — ${item.title}`, { item });
+    await supabase.from('service_info').delete().eq('id', item.id);
+    await loadItems();
+    showFlash('Entry removed — saved to Archive', 'error');
+  };
+
+  const handleCancel = () => {
+    setShowAdd(false);
+    setEditingItem(null);
+    setForm({ title: '', body: '', category: activeCategory });
+  };
+
+  const catItems = items.filter(i => i.category === activeCategory);
+
+  const catColors = {
+    'Expectations': '#8a6a3a', 'Follow-up Visits': '#4a7a6a', 'Post-op Imaging': '#6a4a8a',
+    'Post-op Labs': '#4a6a8a', 'Dot Phrases': '#7a6a4a', 'Consult Tips': '#6a8a4a',
+    'Floor Management': '#8a4a6a', 'Other': '#5a6a7a'
+  };
+
+  return (
+    <div className="fade-in">
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 6 }}>
+        <div>
+          <h2 style={S.sectionHead}>Service Info</h2>
+          <p style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 20, fontStyle: 'italic' }}>
+            Expectations, follow-up protocols, post-op orders, dot phrases, and other service-wide knowledge.
+          </p>
+        </div>
+        {!showAdd && (
+          <button onClick={() => { setShowAdd(true); setForm(f => ({ ...f, category: activeCategory })); }}
+            style={{ ...S.secondaryBtn, flexShrink: 0 }}>+ Add Entry</button>
+        )}
+      </div>
+
+      {/* Category tabs */}
+      <div style={{ display: 'flex', gap: 0, flexWrap: 'wrap', borderBottom: '1px solid var(--border)', marginBottom: 22 }}>
+        {SERVICE_INFO_CATEGORIES.map(cat => (
+          <button key={cat} onClick={() => setActiveCategory(cat)} style={{
+            background: 'none', border: 'none',
+            borderBottom: activeCategory === cat ? `2px solid ${catColors[cat] || 'var(--gold)'}` : '2px solid transparent',
+            color: activeCategory === cat ? (catColors[cat] || 'var(--gold)') : 'var(--text-muted)',
+            padding: '8px 14px', fontSize: 11, letterSpacing: '0.1em', textTransform: 'uppercase',
+            marginBottom: -1, cursor: 'pointer', whiteSpace: 'nowrap', transition: 'all 0.15s',
+            fontFamily: 'var(--font-mono)'
+          }}>
+            {cat}
+            {items.filter(i => i.category === cat).length > 0 && (
+              <span style={{ marginLeft: 5, fontSize: 10, opacity: 0.6 }}>
+                {items.filter(i => i.category === cat).length}
+              </span>
+            )}
+          </button>
+        ))}
+      </div>
+
+      {/* Add / Edit form */}
+      {showAdd && (
+        <div style={{ ...S.card, marginBottom: 24, background: 'var(--bg3)', borderColor: 'rgba(180,140,60,0.2)' }}>
+          <div style={{ fontSize: 10, letterSpacing: '0.18em', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', marginBottom: 14, textTransform: 'uppercase' }}>
+            {editingItem ? 'Edit Entry' : 'New Entry'}
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 12 }}>
+              <Field label="Title *">
+                <input value={form.title} onChange={e => setForm({...form, title: e.target.value})}
+                  placeholder={activeCategory === 'Dot Phrases' ? 'e.g. .lapchole postop' : activeCategory === 'Expectations' ? 'e.g. Rounding expectations' : 'e.g. Post-op day 1 labs'} />
+              </Field>
+              <Field label="Category">
+                <select value={form.category} onChange={e => setForm({...form, category: e.target.value})}>
+                  {SERVICE_INFO_CATEGORIES.map(c => <option key={c}>{c}</option>)}
+                </select>
+              </Field>
+            </div>
+            <Field label={activeCategory === 'Dot Phrases' ? 'Dot Phrase Text *' : 'Details *'}>
+              <textarea value={form.body} onChange={e => setForm({...form, body: e.target.value})}
+                placeholder={
+                  activeCategory === 'Dot Phrases'
+                    ? 'Paste the full dot phrase text here...'
+                    : activeCategory === 'Follow-up Visits'
+                    ? 'e.g. All patients follow up in clinic 2 weeks post-op. Call [number] to schedule...'
+                    : activeCategory === 'Expectations'
+                    ? 'e.g. Pre-round on all surgical patients before 6am. Prioritize post-op day 1 patients...'
+                    : 'Details...'
+                }
+                rows={activeCategory === 'Dot Phrases' ? 8 : 4}
+                style={{ fontFamily: activeCategory === 'Dot Phrases' ? 'var(--font-mono)' : undefined, fontSize: activeCategory === 'Dot Phrases' ? 12 : undefined }}
+              />
+            </Field>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button onClick={handleCancel} style={{ ...S.secondaryBtn, flex: 1 }}>Cancel</button>
+              <button onClick={handleSave} style={{ ...S.primaryBtn, flex: 3 }} disabled={saving}>
+                {saving ? <Spinner /> : editingItem ? 'Save Changes' : 'Add Entry'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Items list */}
+      {loading ? (
+        <div style={{ textAlign: 'center', padding: 40 }}><Spinner /></div>
+      ) : catItems.length === 0 ? (
+        <div style={{ textAlign: 'center', padding: '50px 20px', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', fontSize: 12, border: '1px dashed rgba(255,255,255,0.07)', borderRadius: 6 }}>
+          No entries yet for {activeCategory}. Add the first one.
+        </div>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          {catItems.map(item => (
+            <div key={item.id} style={{ ...S.card, borderLeft: `3px solid ${catColors[item.category] || 'var(--border)'}` }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 }}>
+                <div style={{ fontSize: 15, color: 'var(--text)', fontFamily: 'var(--font-serif)', flex: 1 }}>{item.title}</div>
+                <div style={{ display: 'flex', gap: 12, flexShrink: 0, marginLeft: 12 }}>
+                  <button onClick={() => handleEdit(item)} style={{ ...S.ghostBtn, fontSize: 11, color: '#4a6a7a' }}>edit</button>
+                  <button onClick={() => handleDelete(item)} style={{ background: 'none', border: 'none', color: '#5a3a2a', fontSize: 16, padding: 0, cursor: 'pointer', transition: 'color 0.15s' }}
+                    onMouseEnter={e => e.currentTarget.style.color = 'var(--red)'}
+                    onMouseLeave={e => e.currentTarget.style.color = '#5a3a2a'}>×</button>
+                </div>
+              </div>
+              <pre style={{
+                margin: 0, fontSize: item.category === 'Dot Phrases' ? 12 : 13,
+                color: item.category === 'Dot Phrases' ? '#8ab0a0' : '#b0a880',
+                fontFamily: item.category === 'Dot Phrases' ? 'var(--font-mono)' : 'var(--font-serif)',
+                lineHeight: 1.7, whiteSpace: 'pre-wrap', wordBreak: 'break-word',
+                background: item.category === 'Dot Phrases' ? 'rgba(0,0,0,0.2)' : 'transparent',
+                padding: item.category === 'Dot Phrases' ? '10px 12px' : 0,
+                borderRadius: item.category === 'Dot Phrases' ? 4 : 0
+              }}>{item.body}</pre>
+              <div style={{ marginTop: 8, fontSize: 10, color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>
+                Added {new Date(item.created_at).toLocaleDateString()}
+              </div>
             </div>
           ))}
         </div>
