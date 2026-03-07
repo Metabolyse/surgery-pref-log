@@ -164,7 +164,7 @@ export default function App() {
         <div style={{ padding: '32px 0 0', borderBottom: '1px solid var(--border)', marginBottom: 0 }}>
           <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12, paddingBottom: 16 }}>
             <div>
-              <div style={{ fontSize: 10, letterSpacing: '0.28em', color: '#6a7a5a', fontFamily: 'var(--font-mono)', marginBottom: 5, textTransform: 'uppercase' }}>General Surgery Residency</div>
+              <div style={{ fontSize: 10, letterSpacing: '0.28em', color: '#6a7a5a', fontFamily: 'var(--font-mono)', marginBottom: 5, textTransform: 'uppercase' }}>THAA General Surgery Residency</div>
               <h1 style={{ fontSize: 28, fontWeight: 300, color: 'var(--text)', letterSpacing: '0.02em', fontFamily: 'var(--font-serif)' }}>Attending Preference Log</h1>
             </div>
             <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
@@ -179,16 +179,14 @@ export default function App() {
             </div>
           </div>
 
-          {/* Tabs */}
-          {topLevel.includes(view) && (
-            <div style={{ display: 'flex', gap: 0 }}>
-              {TABS.map(t => (
-                <button key={t.key} onClick={() => setView(t.key)} style={{ background: 'none', border: 'none', borderBottom: view === t.key ? '2px solid var(--gold)' : '2px solid transparent', color: view === t.key ? 'var(--gold)' : 'var(--text-muted)', padding: '10px 16px', fontSize: 11, letterSpacing: '0.12em', textTransform: 'uppercase', marginBottom: -1, transition: 'all 0.15s' }}>
-                  {t.label}
-                </button>
-              ))}
-            </div>
-          )}
+          {/* Tabs — always visible */}
+          <div style={{ display: 'flex', gap: 0 }}>
+            {TABS.map(t => (
+              <button key={t.key} onClick={() => setView(t.key)} style={{ background: 'none', border: 'none', borderBottom: (t.key === 'list' ? ['list','detail','addAttending','addNote'].includes(view) : view === t.key) ? '2px solid var(--gold)' : '2px solid transparent', color: (t.key === 'list' ? ['list','detail','addAttending','addNote'].includes(view) : view === t.key) ? 'var(--gold)' : 'var(--text-muted)', padding: '10px 16px', fontSize: 11, letterSpacing: '0.12em', textTransform: 'uppercase', marginBottom: -1, transition: 'all 0.15s', cursor: 'pointer' }}>
+                {t.label}
+              </button>
+            ))}
+          </div>
         </div>
 
         <div style={{ paddingTop: 28 }}>
