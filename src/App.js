@@ -5,7 +5,7 @@ import './index.css';
 // ── Constants ──────────────────────────────────────────────────────────────
 const DEFAULT_SPECIALTIES = ['General Surgery','Colorectal','Hepatobiliary','Foregut','Endocrine','Trauma','Vascular','Thoracic','Other'];
 const SERVICE_INFO_CATEGORIES = ['Expectations','Follow-up Visits','Post-op Imaging','Post-op Labs','Dot Phrases','Consult Tips','Floor Management','Other'];
-const PREF_CATEGORIES = ['Positioning','Prep & Drape','Port Placement','Instrument Preference','Dissection Technique','Critical Steps','Closure','Pet Peeves','Post-op Orders','Other'];
+const DEFAULT_PREF_CATEGORIES = ['Positioning','Prep & Drape','Port Placement','Instrument Preference','Dissection Technique','Critical Steps','Closure','Pet Peeves','Post-op Orders','Other'];
 const RESOURCE_CATEGORIES = ['Video','Atlas / Images','Guidelines','Article','Textbook','Other'];
 const DEFAULT_PROCEDURES = [
   'Lap Cholecystectomy','Lap Appendectomy','Inguinal Hernia Repair','Ventral Hernia Repair',
@@ -97,6 +97,7 @@ export default function App() {
   const [attendings, setAttendings] = useState([]);
   const [customProcedures, setCustomProcedures] = useState([]);
   const [customSpecialties, setCustomSpecialties] = useState([]);
+  const [customPrefCategories, setCustomPrefCategories] = useState([]);
   const [selectedAttending, setSelectedAttending] = useState(null);
   const [selectedProcedure, setSelectedProcedure] = useState(null);
   const [search, setSearch] = useState('');
@@ -121,6 +122,7 @@ export default function App() {
   const hiddenDefaults = customProcedures.filter(p => p.name.startsWith('__HIDDEN__')).map(p => p.name.replace('__HIDDEN__', ''));
   const allProcedures = [...new Set([...DEFAULT_PROCEDURES.filter(p => !hiddenDefaults.includes(p)), ...customProcedures.filter(p => !p.name.startsWith('__HIDDEN__')).map(p => p.name)])].sort();
   const allSpecialties = [...new Set([...DEFAULT_SPECIALTIES, ...customSpecialties.map(s => s.name)])].sort();
+  const allPrefCategories = [...new Set([...DEFAULT_PREF_CATEGORIES, ...customPrefCategories.map(c => c.name)])];
 
   const showFlash = useCallback((msg, type = 'success') => {
     setFlash({ msg, type });
@@ -131,11 +133,12 @@ export default function App() {
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
-      const [{ data: att }, { data: prefs }, { data: cp }, { data: cs }] = await Promise.all([
+      const [{ data: att }, { data: prefs }, { data: cp }, { data: cs }, { data: cpc }] = await Promise.all([
         supabase.from('attendings').select('*').order('name'),
         supabase.from('preferences').select('*').order('created_at'),
         supabase.from('custom_procedures').select('*').order('name'),
         supabase.from('custom_specialties').select('*').order('name'),
+        supabase.from('custom_pref_categories').select('*').order('name'),
       ]);
       const attendingsWithPrefs = (att || []).map(a => ({
         ...a,
@@ -144,6 +147,7 @@ export default function App() {
       setAttendings(attendingsWithPrefs);
       setCustomProcedures(cp || []);
       setCustomSpecialties(cs || []);
+      setCustomPrefCategories(cpc || []);
     } catch (e) {
       showFlash('Error loading data', 'error');
     }
@@ -260,8 +264,8 @@ export default function App() {
             <>
               {view === 'list' && <ListView attendings={filtered} search={search} setSearch={setSearch} navTo={navTo} showFlash={showFlash} loadData={loadData} allProcedures={allProcedures} />}
               {view === 'addAttending' && <AddAttendingView navTo={navTo} showFlash={showFlash} loadData={loadData} allSpecialties={allSpecialties} customSpecialties={customSpecialties} />}
-              {view === 'detail' && selectedAttending && <DetailView attending={selectedAttending} selectedProcedure={selectedProcedure} setSelectedProcedure={setSelectedProcedure} navTo={navTo} showFlash={showFlash} loadData={loadData} getProceduresForAttending={getProceduresForAttending} getPrefsForProcedure={getPrefsForProcedure} allProcedures={allProcedures} allSpecialties={allSpecialties} customSpecialties={customSpecialties} />}
-              {view === 'addNote' && selectedAttending && <AddNoteView attending={selectedAttending} selectedProcedure={selectedProcedure} navTo={navTo} showFlash={showFlash} loadData={loadData} allProcedures={allProcedures} />}
+              {view === 'detail' && selectedAttending && <DetailView attending={selectedAttending} selectedProcedure={selectedProcedure} setSelectedProcedure={setSelectedProcedure} navTo={navTo} showFlash={showFlash} loadData={loadData} getProceduresForAttending={getProceduresForAttending} getPrefsForProcedure={getPrefsForProcedure} allProcedures={allProcedures} allSpecialties={allSpecialties} customSpecialties={customSpecialties} allPrefCategories={allPrefCategories} />}
+              {view === 'addNote' && selectedAttending && <AddNoteView attending={selectedAttending} selectedProcedure={selectedProcedure} navTo={navTo} showFlash={showFlash} loadData={loadData} allProcedures={allProcedures} allPrefCategories={allPrefCategories} />}
               {view === 'resources' && <ResourcesView allProcedures={allProcedures} showFlash={showFlash} />}
               {view === 'opNote' && <OpNoteView allProcedures={allProcedures} attendings={attendings} getPrefsForProcedure={getPrefsForProcedure} />}
               {view === 'procedures' && <ProceduresView customProcedures={customProcedures} loadData={loadData} showFlash={showFlash} allProcedures={allProcedures} attendings={attendings} />}
@@ -452,7 +456,7 @@ function ProcedureResourcesInline({ procedure }) {
 }
 
 // ── Detail View ────────────────────────────────────────────────────────────
-function DetailView({ attending, selectedProcedure, setSelectedProcedure, navTo, showFlash, loadData, getProceduresForAttending, getPrefsForProcedure, allProcedures, allSpecialties, customSpecialties }) {
+function DetailView({ attending, selectedProcedure, setSelectedProcedure, navTo, showFlash, loadData, getProceduresForAttending, getPrefsForProcedure, allProcedures, allSpecialties, customSpecialties, allPrefCategories }) {
   const [deleting, setDeleting] = useState(false);
   const [editingAttending, setEditingAttending] = useState(false);
   const [editingPref, setEditingPref] = useState(null); // pref object being edited
@@ -532,7 +536,7 @@ function DetailView({ attending, selectedProcedure, setSelectedProcedure, navTo,
               </Field>
               <Field label="Category">
                 <select value={editPrefForm.category} onChange={e => setEditPrefForm({...editPrefForm, category: e.target.value})}>
-                  {PREF_CATEGORIES.map(c => <option key={c}>{c}</option>)}
+                  {allPrefCategories.map(c => <option key={c}>{c}</option>)}
                 </select>
               </Field>
               <Field label="Note">
@@ -647,8 +651,11 @@ function DetailView({ attending, selectedProcedure, setSelectedProcedure, navTo,
 }
 
 // ── Add Note ───────────────────────────────────────────────────────────────
-function AddNoteView({ attending, selectedProcedure, navTo, showFlash, loadData, allProcedures }) {
-  const [form, setForm] = useState({ procedure: selectedProcedure || '', category: PREF_CATEGORIES[0], note: '', critical: false });
+function AddNoteView({ attending, selectedProcedure, navTo, showFlash, loadData, allProcedures, allPrefCategories }) {
+  const [newCategory, setNewCategory] = useState('');
+  const [addingCategory, setAddingCategory] = useState(false);
+  const [savingCategory, setSavingCategory] = useState(false);
+  const [form, setForm] = useState({ procedure: selectedProcedure || '', category: (allPrefCategories && allPrefCategories[0]) || 'Positioning', note: '', critical: false });
   const [saving, setSaving] = useState(false);
 
   const handleSave = async () => {
@@ -675,9 +682,40 @@ function AddNoteView({ attending, selectedProcedure, navTo, showFlash, loadData,
           </select>
         </Field>
         <Field label="Category">
-          <select value={form.category} onChange={e => setForm({...form, category: e.target.value})}>
-            {PREF_CATEGORIES.map(c => <option key={c}>{c}</option>)}
-          </select>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            <select value={form.category} onChange={e => setForm({...form, category: e.target.value})}>
+              {allPrefCategories.map(c => <option key={c}>{c}</option>)}
+            </select>
+            {addingCategory ? (
+              <div style={{ display: 'flex', gap: 8 }}>
+                <input value={newCategory} onChange={e => setNewCategory(e.target.value)}
+                  onKeyDown={async e => {
+                    if (e.key === 'Enter') {
+                      const trimmed = newCategory.trim();
+                      if (!trimmed || allPrefCategories.includes(trimmed)) { setAddingCategory(false); setNewCategory(''); return; }
+                      setSavingCategory(true);
+                      await supabase.from('custom_pref_categories').insert([{ name: trimmed }]);
+                      await loadData();
+                      setForm(f => ({...f, category: trimmed}));
+                      setSavingCategory(false); setAddingCategory(false); setNewCategory('');
+                    }
+                  }}
+                  placeholder="New category name..." autoFocus style={{ flex: 1 }} />
+                <button onClick={async () => {
+                  const trimmed = newCategory.trim();
+                  if (!trimmed || allPrefCategories.includes(trimmed)) { setAddingCategory(false); setNewCategory(''); return; }
+                  setSavingCategory(true);
+                  await supabase.from('custom_pref_categories').insert([{ name: trimmed }]);
+                  await loadData();
+                  setForm(f => ({...f, category: trimmed}));
+                  setSavingCategory(false); setAddingCategory(false); setNewCategory('');
+                }} style={S.secondaryBtn} disabled={savingCategory}>{savingCategory ? <Spinner /> : 'Add'}</button>
+                <button onClick={() => { setAddingCategory(false); setNewCategory(''); }} style={{ ...S.secondaryBtn, color: 'var(--text-muted)' }}>Cancel</button>
+              </div>
+            ) : (
+              <button onClick={() => setAddingCategory(true)} style={{ ...S.ghostBtn, fontSize: 11 }}>+ Add new category</button>
+            )}
+          </div>
         </Field>
         <Field label="Note *">
           <textarea value={form.note} onChange={e => setForm({...form, note: e.target.value})} placeholder="e.g. Always places the camera port 2cm left of the umbilicus using a Hasson technique..." rows={4} />
