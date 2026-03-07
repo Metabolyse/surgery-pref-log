@@ -201,7 +201,7 @@ export default function App() {
               {view === 'addNote' && selectedAttending && <AddNoteView attending={selectedAttending} selectedProcedure={selectedProcedure} navTo={navTo} showFlash={showFlash} loadData={loadData} allProcedures={allProcedures} />}
               {view === 'resources' && <ResourcesView allProcedures={allProcedures} showFlash={showFlash} />}
               {view === 'opNote' && <OpNoteView allProcedures={allProcedures} attendings={attendings} getPrefsForProcedure={getPrefsForProcedure} />}
-              {view === 'procedures' && <ProceduresView customProcedures={customProcedures} loadData={loadData} showFlash={showFlash} allProcedures={allProcedures} />}
+              {view === 'procedures' && <ProceduresView customProcedures={customProcedures} loadData={loadData} showFlash={showFlash} allProcedures={allProcedures} attendings={attendings} />}
             </>
           )}
         </div>
@@ -287,6 +287,68 @@ function AddAttendingView({ navTo, showFlash, loadData }) {
           {saving ? <Spinner /> : 'Save Attending'}
         </button>
       </div>
+    </div>
+  );
+}
+
+// ── Procedure Resources Inline ─────────────────────────────────────────────
+function ProcedureResourcesInline({ procedure }) {
+  const [resources, setResources] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (!procedure) { setResources([]); setLoading(false); return; }
+    const load = async () => {
+      setLoading(true);
+      const { data } = await supabase.from('resources').select('*').eq('procedure', procedure).order('category');
+      setResources(data || []);
+      setLoading(false);
+    };
+    load();
+  }, [procedure]);
+
+  if (!procedure) return null;
+
+  const categoryColors = { 'Video': '#4a7a9a', 'Atlas / Images': '#7a6a9a', 'Guidelines': '#4a8a6a', 'Article': '#8a7a4a', 'Textbook': '#6a6a8a', 'Other': '#5a6a7a' };
+  const grouped = resources.reduce((acc, r) => {
+    if (!acc[r.category]) acc[r.category] = [];
+    acc[r.category].push(r);
+    return acc;
+  }, {});
+
+  return (
+    <div style={{ marginTop: 24, padding: '16px 18px', background: 'rgba(60,90,130,0.07)', border: '1px solid rgba(60,90,160,0.2)', borderRadius: 'var(--radius)' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+        <div style={{ fontSize: 10, letterSpacing: '0.18em', color: '#6a8a9a', fontFamily: 'var(--font-mono)', textTransform: 'uppercase' }}>
+          Resources — {procedure}
+        </div>
+      </div>
+
+      {loading ? (
+        <div style={{ padding: '10px 0' }}><Spinner /></div>
+      ) : resources.length === 0 ? (
+        <div style={{ fontSize: 12, color: 'var(--text-muted)', fontStyle: 'italic', fontFamily: 'var(--font-serif)' }}>
+          No resources added for this procedure yet. Add them in the Resources tab.
+        </div>
+      ) : (
+        Object.entries(grouped).map(([cat, items]) => (
+          <div key={cat} style={{ marginBottom: 12 }}>
+            <div style={{ fontSize: 10, letterSpacing: '0.14em', color: categoryColors[cat] || 'var(--text-muted)', fontFamily: 'var(--font-mono)', marginBottom: 6, textTransform: 'uppercase' }}>{cat}</div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+              {items.map(r => (
+                <div key={r.id} style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                  <a href={r.url} target="_blank" rel="noopener noreferrer"
+                    style={{ color: '#7aacca', fontSize: 14, fontFamily: 'var(--font-serif)', textDecoration: 'none', borderBottom: '1px solid rgba(122,172,202,0.25)' }}
+                    onMouseEnter={e => e.currentTarget.style.borderBottomColor = 'rgba(122,172,202,0.7)'}
+                    onMouseLeave={e => e.currentTarget.style.borderBottomColor = 'rgba(122,172,202,0.25)'}
+                  >{r.title} ↗</a>
+                  {r.notes && <div style={{ fontSize: 12, color: 'var(--text-muted)', fontStyle: 'italic' }}>{r.notes}</div>}
+                </div>
+              ))}
+            </div>
+          </div>
+        ))
+      )}
     </div>
   );
 }
@@ -382,7 +444,12 @@ function DetailView({ attending, selectedProcedure, setSelectedProcedure, navTo,
         </div>
       )}
 
-      <button onClick={() => navTo('addNote', attending, selectedProcedure || null)} style={S.primaryBtn}>+ Log Preference</button>
+      {/* Inline resources — only shown when a specific procedure is selected */}
+      <ProcedureResourcesInline procedure={selectedProcedure} />
+
+      <div style={{ marginTop: 16 }}>
+        <button onClick={() => navTo('addNote', attending, selectedProcedure || null)} style={S.primaryBtn}>+ Log Preference</button>
+      </div>
     </div>
   );
 }
@@ -692,13 +759,20 @@ function OpNoteView({ allProcedures, attendings, getPrefsForProcedure }) {
 }
 
 // ── Procedures View ────────────────────────────────────────────────────────
-function ProceduresView({ customProcedures, loadData, showFlash, allProcedures }) {
+function ProceduresView({ customProcedures, loadData, showFlash, allProcedures, attendings }) {
   const [newProc, setNewProc] = useState('');
   const [saving, setSaving] = useState(false);
+  // Edit modal state
+  const [editTarget, setEditTarget] = useState(null); // { name, isDefault }
+  const [editMode, setEditMode] = useState('rename'); // 'rename' | 'split'
+  const [renameTo, setRenameTo] = useState('');
+  const [splitNames, setSplitNames] = useState(['', '']);
+  const [editSaving, setEditSaving] = useState(false);
 
   const handleAdd = async () => {
     const trimmed = newProc.trim();
-    if (!trimmed || allProcedures.includes(trimmed)) { if (allProcedures.includes(trimmed)) showFlash('Procedure already exists', 'error'); return; }
+    if (!trimmed) return;
+    if (allProcedures.includes(trimmed)) { showFlash('Procedure already exists', 'error'); return; }
     setSaving(true);
     const { error } = await supabase.from('custom_procedures').insert([{ name: trimmed }]);
     setSaving(false);
@@ -711,18 +785,164 @@ function ProceduresView({ customProcedures, loadData, showFlash, allProcedures }
   const handleDelete = async (id) => {
     await supabase.from('custom_procedures').delete().eq('id', id);
     await loadData();
+    showFlash('Procedure removed', 'error');
   };
+
+  const openEdit = (procName, isDefault) => {
+    setEditTarget({ name: procName, isDefault });
+    setEditMode('rename');
+    setRenameTo(procName);
+    setSplitNames(['', '']);
+  };
+
+  const closeEdit = () => setEditTarget(null);
+
+  // Rename: update all preferences and resources that reference this procedure name
+  const handleRename = async () => {
+    const newName = renameTo.trim();
+    if (!newName || newName === editTarget.name) { closeEdit(); return; }
+    if (allProcedures.includes(newName)) { showFlash('That name already exists', 'error'); return; }
+    setEditSaving(true);
+    try {
+      // Update preferences
+      await supabase.from('preferences').update({ procedure: newName }).eq('procedure', editTarget.name);
+      // Update resources
+      await supabase.from('resources').update({ procedure: newName }).eq('procedure', editTarget.name);
+      // If it's a custom procedure, rename in custom_procedures table
+      if (!editTarget.isDefault) {
+        const cp = customProcedures.find(p => p.name === editTarget.name);
+        if (cp) await supabase.from('custom_procedures').update({ name: newName }).eq('id', cp.id);
+      } else {
+        // Default procedure being renamed — save as custom with new name
+        // (defaults are hardcoded; renaming one means we track the override as custom)
+        await supabase.from('custom_procedures').insert([{ name: newName }]);
+      }
+      await loadData();
+      showFlash(`Renamed to "${newName}"`);
+      closeEdit();
+    } catch (e) {
+      showFlash('Error renaming procedure', 'error');
+    }
+    setEditSaving(false);
+  };
+
+  // Split: duplicate all prefs/resources for each new name, then remove old
+  const handleSplit = async () => {
+    const names = splitNames.map(n => n.trim()).filter(Boolean);
+    if (names.length < 2) { showFlash('Enter at least 2 procedure names to split into', 'error'); return; }
+    const dupes = names.filter(n => allProcedures.includes(n) && n !== editTarget.name);
+    if (dupes.length) { showFlash(`"${dupes[0]}" already exists`, 'error'); return; }
+    setEditSaving(true);
+    try {
+      // Get all prefs and resources for the original procedure
+      const { data: prefs } = await supabase.from('preferences').select('*').eq('procedure', editTarget.name);
+      const { data: resources } = await supabase.from('resources').select('*').eq('procedure', editTarget.name);
+
+      for (const name of names) {
+        // Add as custom procedure if not already existing
+        if (!allProcedures.includes(name)) {
+          await supabase.from('custom_procedures').insert([{ name }]);
+        }
+        // Duplicate prefs for each new name
+        if (prefs && prefs.length > 0) {
+          const newPrefs = prefs.map(({ id, created_at, ...rest }) => ({ ...rest, procedure: name }));
+          await supabase.from('preferences').insert(newPrefs);
+        }
+        // Duplicate resources for each new name
+        if (resources && resources.length > 0) {
+          const newRes = resources.map(({ id, created_at, ...rest }) => ({ ...rest, procedure: name }));
+          await supabase.from('resources').insert(newRes);
+        }
+      }
+
+      // Remove original prefs and resources
+      await supabase.from('preferences').delete().eq('procedure', editTarget.name);
+      await supabase.from('resources').delete().eq('procedure', editTarget.name);
+      // Remove original custom procedure entry if it exists
+      if (!editTarget.isDefault) {
+        const cp = customProcedures.find(p => p.name === editTarget.name);
+        if (cp) await supabase.from('custom_procedures').delete().eq('id', cp.id);
+      }
+
+      await loadData();
+      showFlash(`Split into ${names.length} procedures`);
+      closeEdit();
+    } catch (e) {
+      showFlash('Error splitting procedure', 'error');
+    }
+    setEditSaving(false);
+  };
+
+  const addSplitField = () => setSplitNames(n => [...n, '']);
+  const removeSplitField = (i) => setSplitNames(n => n.filter((_, idx) => idx !== i));
+  const updateSplitField = (i, val) => setSplitNames(n => n.map((x, idx) => idx === i ? val : x));
 
   return (
     <div className="fade-in">
       <h2 style={S.sectionHead}>Procedure List</h2>
-      <p style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 22, fontStyle: 'italic' }}>Add custom procedures to use across preference notes, resources, and op notes.</p>
+      <p style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 22, fontStyle: 'italic' }}>
+        Add, rename, or split procedures. Changes propagate to all linked preference notes and resources.
+      </p>
 
+      {/* Add new */}
       <div style={{ display: 'flex', gap: 10, marginBottom: 28 }}>
         <input value={newProc} onChange={e => setNewProc(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleAdd()} placeholder="e.g. Robotic Low Anterior Resection" style={{ flex: 1 }} />
         <button onClick={handleAdd} style={S.secondaryBtn} disabled={saving}>{saving ? <Spinner /> : 'Add'}</button>
       </div>
 
+      {/* Edit modal */}
+      {editTarget && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', zIndex: 500, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+          <div style={{ background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 8, padding: 24, width: '100%', maxWidth: 480, boxShadow: '0 8px 40px rgba(0,0,0,0.6)' }}>
+            <div style={{ fontSize: 12, color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', marginBottom: 4 }}>Editing</div>
+            <div style={{ fontSize: 18, color: 'var(--text)', fontFamily: 'var(--font-serif)', marginBottom: 20 }}>{editTarget.name}</div>
+
+            {/* Mode toggle */}
+            <div style={{ display: 'flex', gap: 0, marginBottom: 20, border: '1px solid var(--border)', borderRadius: 'var(--radius)', overflow: 'hidden' }}>
+              {['rename', 'split'].map(m => (
+                <button key={m} onClick={() => setEditMode(m)} style={{ flex: 1, background: editMode === m ? 'var(--gold-dim)' : 'transparent', border: 'none', borderRight: m === 'rename' ? '1px solid var(--border)' : 'none', color: editMode === m ? 'var(--gold)' : 'var(--text-muted)', padding: '9px 0', fontSize: 11, letterSpacing: '0.1em', textTransform: 'uppercase', cursor: 'pointer', transition: 'all 0.15s' }}>
+                  {m === 'rename' ? '✎ Rename' : '⑂ Split into Multiple'}
+                </button>
+              ))}
+            </div>
+
+            {editMode === 'rename' && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                <Field label="New Name">
+                  <input value={renameTo} onChange={e => setRenameTo(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleRename()} autoFocus />
+                </Field>
+                <p style={{ fontSize: 12, color: 'var(--text-muted)', fontStyle: 'italic' }}>All existing preference notes and resources will be updated to the new name.</p>
+              </div>
+            )}
+
+            {editMode === 'split' && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                <p style={{ fontSize: 12, color: 'var(--text-muted)', fontStyle: 'italic', marginBottom: 4 }}>
+                  Existing notes and resources will be copied to each new procedure. The original will be removed.
+                </p>
+                {splitNames.map((name, i) => (
+                  <div key={i} style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                    <input value={name} onChange={e => updateSplitField(i, e.target.value)} placeholder={`Procedure ${i + 1} name...`} style={{ flex: 1 }} autoFocus={i === 0} />
+                    {splitNames.length > 2 && (
+                      <button onClick={() => removeSplitField(i)} style={{ background: 'none', border: 'none', color: '#6a4a3a', fontSize: 16, cursor: 'pointer', flexShrink: 0 }}>×</button>
+                    )}
+                  </div>
+                ))}
+                <button onClick={addSplitField} style={{ ...S.ghostBtn, fontSize: 11, color: 'var(--text-muted)', textAlign: 'left' }}>+ Add another</button>
+              </div>
+            )}
+
+            <div style={{ display: 'flex', gap: 10, marginTop: 20 }}>
+              <button onClick={closeEdit} style={{ ...S.secondaryBtn, flex: 1 }}>Cancel</button>
+              <button onClick={editMode === 'rename' ? handleRename : handleSplit} style={{ ...S.primaryBtn, flex: 2 }} disabled={editSaving}>
+                {editSaving ? <Spinner /> : editMode === 'rename' ? 'Save Rename' : 'Split Procedure'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Custom procedures */}
       {customProcedures.length > 0 && (
         <div style={{ marginBottom: 28 }}>
           <div style={S.divider}>Custom Procedures</div>
@@ -730,18 +950,25 @@ function ProceduresView({ customProcedures, loadData, showFlash, allProcedures }
             {customProcedures.map(p => (
               <div key={p.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 14px', background: 'rgba(180,140,60,0.05)', border: '1px solid rgba(180,140,60,0.16)', borderRadius: 'var(--radius)' }}>
                 <span style={{ fontSize: 14, color: 'var(--text)', fontFamily: 'var(--font-serif)' }}>{p.name}</span>
-                <button onClick={() => handleDelete(p.id)} style={{ background: 'none', border: 'none', color: '#5a3a2a', fontSize: 16, padding: 0, cursor: 'pointer', transition: 'color 0.15s' }} onMouseEnter={e => e.currentTarget.style.color='var(--red)'} onMouseLeave={e => e.currentTarget.style.color='#5a3a2a'}>×</button>
+                <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+                  <button onClick={() => openEdit(p.name, false)} style={{ ...S.ghostBtn, fontSize: 11, color: 'var(--text-muted)' }}>edit</button>
+                  <button onClick={() => handleDelete(p.id)} style={{ background: 'none', border: 'none', color: '#5a3a2a', fontSize: 16, padding: 0, cursor: 'pointer', transition: 'color 0.15s' }} onMouseEnter={e => e.currentTarget.style.color='var(--red)'} onMouseLeave={e => e.currentTarget.style.color='#5a3a2a'}>×</button>
+                </div>
               </div>
             ))}
           </div>
         </div>
       )}
 
+      {/* Default procedures */}
       <div>
-        <div style={S.divider}>Default Procedures</div>
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+        <div style={S.divider}>Default Procedures <span style={{ color: 'var(--text-muted)', fontWeight: 400 }}>— click to rename or split</span></div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
           {DEFAULT_PROCEDURES.map(p => (
-            <span key={p} style={{ fontSize: 11, color: '#3a4a5a', fontFamily: 'var(--font-mono)', padding: '4px 9px', border: '1px solid rgba(255,255,255,0.05)', borderRadius: 3 }}>{p}</span>
+            <div key={p} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '9px 14px', background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 'var(--radius)' }}>
+              <span style={{ fontSize: 13, color: '#6a7a8a', fontFamily: 'var(--font-serif)' }}>{p}</span>
+              <button onClick={() => openEdit(p, true)} style={{ ...S.ghostBtn, fontSize: 11 }}>edit</button>
+            </div>
           ))}
         </div>
       </div>
