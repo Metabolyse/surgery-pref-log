@@ -1274,8 +1274,6 @@ function ProceduresView({ customProcedures, loadData, showFlash, allProcedures, 
     showFlash(`"${procName}" removed`, 'error');
   };
 
-  const visibleDefaults = DEFAULT_PROCEDURES.filter(p => allProcedures.includes(p));
-
   const openEdit = (procName, isDefault) => {
     setEditTarget({ name: procName, isDefault });
     setEditMode('rename');
@@ -1430,42 +1428,23 @@ function ProceduresView({ customProcedures, loadData, showFlash, allProcedures, 
         </div>
       )}
 
-      {/* Custom procedures */}
-      {customProcedures.length > 0 && (
-        <div style={{ marginBottom: 28 }}>
-          <div style={S.divider}>Custom Procedures</div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
-            {customProcedures.map(p => (
-              <div key={p.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 14px', background: selectedProc === p.name ? 'rgba(180,140,60,0.1)' : 'rgba(180,140,60,0.05)', border: `1px solid ${selectedProc === p.name ? 'rgba(200,168,64,0.4)' : 'rgba(180,140,60,0.16)'}`, borderRadius: 'var(--radius)', cursor: 'pointer', transition: 'all 0.15s' }}
-                onClick={() => setSelectedProc(selectedProc === p.name ? null : p.name)}>
-                <span style={{ fontSize: 14, color: 'var(--text)', fontFamily: 'var(--font-serif)' }}>{p.name}</span>
-                <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
-                  <button onClick={e => { e.stopPropagation(); openEdit(p.name, false); }} style={{ ...S.ghostBtn, fontSize: 11, color: 'var(--text-muted)' }}>edit</button>
-                  <button onClick={e => { e.stopPropagation(); handleDelete(p.id); }} style={{ background: 'none', border: 'none', color: '#5a3a2a', fontSize: 16, padding: 0, cursor: 'pointer', transition: 'color 0.15s' }} onMouseEnter={e => e.currentTarget.style.color='var(--red)'} onMouseLeave={e => e.currentTarget.style.color='#5a3a2a'}>×</button>
-                  <span style={{ fontSize: 13, color: 'var(--text-muted)', transition: 'transform 0.15s', display: 'inline-block', transform: selectedProc === p.name ? 'rotate(90deg)' : 'none' }}>›</span>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Default procedures */}
-      <div>
-        <div style={S.divider}>Default Procedures <span style={{ color: 'var(--text-muted)', fontWeight: 400 }}>— edit to rename or split</span></div>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
-          {visibleDefaults.map(p => (
-            <div key={p} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '9px 14px', background: selectedProc === p ? 'rgba(255,255,255,0.05)' : 'rgba(255,255,255,0.02)', border: `1px solid ${selectedProc === p ? 'rgba(200,168,64,0.3)' : 'rgba(255,255,255,0.06)'}`, borderRadius: 'var(--radius)', cursor: 'pointer', transition: 'all 0.15s' }}
+      {/* Unified procedure list — alphabetical */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
+        {[...allProcedures].sort((a, b) => a.localeCompare(b)).map(p => {
+          const isCustom = customProcedures.some(c => c.name === p);
+          const isDefault = DEFAULT_PROCEDURES.includes(p);
+          return (
+            <div key={p} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 14px', background: selectedProc === p ? 'rgba(255,255,255,0.05)' : 'rgba(255,255,255,0.02)', border: `1px solid ${selectedProc === p ? 'rgba(200,168,64,0.35)' : 'rgba(255,255,255,0.07)'}`, borderRadius: 'var(--radius)', cursor: 'pointer', transition: 'all 0.15s' }}
               onClick={() => setSelectedProc(selectedProc === p ? null : p)}>
-              <span style={{ fontSize: 13, color: selectedProc === p ? 'var(--text)' : '#6a7a8a', fontFamily: 'var(--font-serif)', transition: 'color 0.15s' }}>{p}</span>
+              <span style={{ fontSize: 14, color: selectedProc === p ? 'var(--text)' : '#b0bac8', fontFamily: 'var(--font-serif)', transition: 'color 0.15s' }}>{p}</span>
               <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
-                <button onClick={e => { e.stopPropagation(); openEdit(p, true); }} style={{ ...S.ghostBtn, fontSize: 11 }}>edit</button>
-                <button onClick={e => { e.stopPropagation(); handleDeleteDefault(p); }} style={{ background: 'none', border: 'none', color: '#5a3a2a', fontSize: 16, padding: 0, cursor: 'pointer', transition: 'color 0.15s' }} onMouseEnter={e => e.currentTarget.style.color='var(--red)'} onMouseLeave={e => e.currentTarget.style.color='#5a3a2a'}>×</button>
-                <span style={{ fontSize: 13, color: 'var(--text-muted)', transition: 'transform 0.15s', display: 'inline-block', transform: selectedProc === p ? 'rotate(90deg)' : 'none' }}>›</span>
+                <button onClick={e => { e.stopPropagation(); openEdit(p, isDefault && !isCustom); }} style={{ ...S.ghostBtn, fontSize: 11, color: 'var(--text-muted)' }}>edit</button>
+                <button onClick={e => { e.stopPropagation(); isCustom ? handleDelete(customProcedures.find(c => c.name === p)?.id) : handleDeleteDefault(p); }} style={{ background: 'none', border: 'none', color: '#5a3a2a', fontSize: 16, padding: 0, cursor: 'pointer', transition: 'color 0.15s' }} onMouseEnter={e => e.currentTarget.style.color='var(--red)'} onMouseLeave={e => e.currentTarget.style.color='#5a3a2a'}>×</button>
+                <span style={{ fontSize: 13, color: 'var(--text-muted)', display: 'inline-block', transition: 'transform 0.15s', transform: selectedProc === p ? 'rotate(90deg)' : 'none' }}>›</span>
               </div>
             </div>
-          ))}
-        </div>
+          );
+        })}
       </div>
 
       {/* Procedure detail panel */}
