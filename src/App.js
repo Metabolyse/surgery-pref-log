@@ -131,10 +131,12 @@ export default function App() {
   }, []);
 
   // ── Auth session ──
+  const [authEvent, setAuthEvent] = useState(null);
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => setSession(session));
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       setSession(session);
+      setAuthEvent(event);
     });
     return () => subscription.unsubscribe();
   }, []);
@@ -266,6 +268,7 @@ export default function App() {
   // Show nothing while session loads, login screen if not authed
   if (session === undefined) return <div style={{ minHeight: '100vh', background: 'var(--bg)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Spinner /></div>;
   if (!session) return <LoginView />;
+  if (authEvent === 'PASSWORD_RECOVERY') return <ResetPasswordView onDone={() => setAuthEvent(null)} />;
 
   return (
     <div style={{ minHeight: '100vh', background: 'var(--bg)', position: 'relative' }}>
@@ -2653,6 +2656,64 @@ function DebriefView({ attendings, allProcedures, navTo, showFlash, userId }) {
 
 
 // ── Login View ─────────────────────────────────────────────────────────────
+function ResetPasswordView({ onDone }) {
+  const [password, setPassword] = useState('');
+  const [confirm, setConfirm] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [done, setDone] = useState(false);
+
+  const handleSave = async () => {
+    if (password.length < 6) { setError('Password must be at least 6 characters.'); return; }
+    if (password !== confirm) { setError('Passwords do not match.'); return; }
+    setLoading(true); setError('');
+    const { error } = await supabase.auth.updateUser({ password });
+    setLoading(false);
+    if (error) { setError(error.message); return; }
+    setDone(true);
+    setTimeout(onDone, 1800);
+  };
+
+  return (
+    <div style={{ minHeight: '100vh', background: 'var(--bg)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
+      <div style={{ width: '100%', maxWidth: 400 }}>
+        <div style={{ textAlign: 'center', marginBottom: 36 }}>
+          <div style={{ fontSize: 9, letterSpacing: '0.32em', color: '#5a6a4a', fontFamily: 'var(--font-mono)', textTransform: 'uppercase', marginBottom: 10 }}>THAA General Surgery Residency</div>
+          <h1 style={{ fontSize: 28, fontWeight: 300, color: 'var(--text)', fontFamily: 'var(--font-serif)', marginBottom: 6 }}>Set New Password</h1>
+        </div>
+        <div style={{ background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 8, padding: 32, boxShadow: 'var(--shadow)' }}>
+          {done ? (
+            <div style={{ textAlign: 'center' }}>
+              <div style={{ fontSize: 28, marginBottom: 12 }}>✓</div>
+              <div style={{ fontSize: 14, color: '#4aba7a', fontFamily: 'var(--font-serif)' }}>Password updated! Signing you in…</div>
+            </div>
+          ) : (
+            <>
+              <div style={{ fontSize: 12, color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', marginBottom: 22, lineHeight: 1.6 }}>
+                Choose a new password for your account.
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                <div>
+                  <label style={S.label}>New Password</label>
+                  <input type="password" value={password} onChange={e => { setPassword(e.target.value); setError(''); }} placeholder="At least 6 characters" autoFocus autoComplete="new-password" />
+                </div>
+                <div>
+                  <label style={S.label}>Confirm Password</label>
+                  <input type="password" value={confirm} onChange={e => { setConfirm(e.target.value); setError(''); }} onKeyDown={e => e.key === 'Enter' && handleSave()} placeholder="Re-enter password" autoComplete="new-password" />
+                </div>
+              </div>
+              {error && <div style={{ fontSize: 12, color: 'var(--red)', fontFamily: 'var(--font-mono)', marginTop: 12, padding: '8px 12px', background: 'var(--red-dim)', borderRadius: 4 }}>{error}</div>}
+              <button onClick={handleSave} disabled={loading} style={{ ...S.primaryBtn, marginTop: 20, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+                {loading ? <><Spinner /> Saving…</> : 'Save New Password'}
+              </button>
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function LoginView() {
   const [mode, setMode] = useState('signin'); // 'signin' | 'signup' | 'reset'
   const [email, setEmail] = useState('');
