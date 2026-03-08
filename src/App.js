@@ -1,6 +1,15 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase } from './supabaseClient';
 import './index.css';
+import { useEditor, EditorContent } from '@tiptap/react';
+import StarterKit from '@tiptap/starter-kit';
+import Underline from '@tiptap/extension-underline';
+import Table from '@tiptap/extension-table';
+import TableRow from '@tiptap/extension-table-row';
+import TableCell from '@tiptap/extension-table-cell';
+import TableHeader from '@tiptap/extension-table-header';
+import TextAlign from '@tiptap/extension-text-align';
+import Placeholder from '@tiptap/extension-placeholder';
 
 // ── Constants ──────────────────────────────────────────────────────────────
 const DEFAULT_SPECIALTIES = ['General Surgery','Colorectal','Hepatobiliary','Foregut','Endocrine','Trauma','Vascular','Thoracic','Other'];
@@ -3143,17 +3152,7 @@ function EditPrefCardView({ procedure, navTo, showFlash, userId }) {
 const { useEditor, EditorContent } = window.TiptapReact || {};
 
 function RichEditor({ content, onChange, placeholder, minHeight = 160 }) {
-  const { useEditor: _useEditor, EditorContent: _EditorContent } = require('@tiptap/react');
-  const StarterKit = require('@tiptap/starter-kit').default;
-  const Underline = require('@tiptap/extension-underline').default;
-  const Table = require('@tiptap/extension-table').default;
-  const TableRow = require('@tiptap/extension-table-row').default;
-  const TableCell = require('@tiptap/extension-table-cell').default;
-  const TableHeader = require('@tiptap/extension-table-header').default;
-  const TextAlign = require('@tiptap/extension-text-align').default;
-  const Placeholder = require('@tiptap/extension-placeholder').default;
-
-  const editor = _useEditor({
+  const editor = useEditor({
     extensions: [
       StarterKit,
       Underline,
@@ -3229,7 +3228,7 @@ function RichEditor({ content, onChange, placeholder, minHeight = 160 }) {
       </div>
 
       {/* Editor area */}
-      <_EditorContent editor={editor} />
+      <EditorContent editor={editor} />
 
       {/* Tiptap styles */}
       <style>{`
