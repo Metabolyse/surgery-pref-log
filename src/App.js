@@ -2654,25 +2654,45 @@ function DebriefView({ attendings, allProcedures, navTo, showFlash, userId }) {
 
 // ── Login View ─────────────────────────────────────────────────────────────
 function LoginView() {
+  const [mode, setMode] = useState('signin'); // 'signin' | 'signup' | 'reset'
   const [email, setEmail] = useState('');
-  const [sent, setSent] = useState(false);
+  const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [message, setMessage] = useState('');
 
-  const handleSend = async () => {
-    if (!email.trim() || !email.includes('@')) { setError('Please enter a valid email address.'); return; }
-    setLoading(true);
-    setError('');
-    const { error } = await supabase.auth.signInWithOtp({
-      email: email.trim(),
-      options: {
-        shouldCreateUser: true,
-      }
-    });
+  const switchMode = (m) => { setMode(m); setError(''); setMessage(''); setPassword(''); setConfirmPassword(''); };
+
+  const handleSignIn = async () => {
+    if (!email.trim() || !password) { setError('Please enter your email and password.'); return; }
+    setLoading(true); setError('');
+    const { error } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
+    setLoading(false);
+    if (error) { setError(error.message === 'Invalid login credentials' ? 'Incorrect email or password.' : error.message); }
+  };
+
+  const handleSignUp = async () => {
+    if (!email.trim() || !password) { setError('Please enter your email and password.'); return; }
+    if (password.length < 6) { setError('Password must be at least 6 characters.'); return; }
+    if (password !== confirmPassword) { setError('Passwords do not match.'); return; }
+    setLoading(true); setError('');
+    const { error } = await supabase.auth.signUp({ email: email.trim(), password });
     setLoading(false);
     if (error) { setError(error.message); return; }
-    setSent(true);
+    setMessage('Account created! You are now signed in.');
   };
+
+  const handleReset = async () => {
+    if (!email.trim()) { setError('Please enter your email address.'); return; }
+    setLoading(true); setError('');
+    const { error } = await supabase.auth.resetPasswordForEmail(email.trim());
+    setLoading(false);
+    if (error) { setError(error.message); return; }
+    setMessage('Password reset email sent. Check your inbox.');
+  };
+
+  const handleKey = e => { if (e.key === 'Enter') mode === 'signin' ? handleSignIn() : mode === 'signup' ? handleSignUp() : handleReset(); };
 
   return (
     <div style={{ minHeight: '100vh', background: 'var(--bg)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24, position: 'relative' }}>
@@ -2688,50 +2708,62 @@ function LoginView() {
 
         {/* Card */}
         <div style={{ background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 8, padding: 32, boxShadow: 'var(--shadow)' }}>
-          {!sent ? (
-            <>
-              <div style={{ fontSize: 14, color: 'var(--text)', fontFamily: 'var(--font-serif)', marginBottom: 6 }}>Sign in with magic link</div>
-              <div style={{ fontSize: 12, color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', marginBottom: 24, lineHeight: 1.6 }}>
-                Enter your email — we'll send a link that logs you in instantly. No password needed.
-              </div>
 
-              <div style={{ marginBottom: 16 }}>
-                <label style={S.label}>Email address</label>
-                <input
-                  type="email"
-                  value={email}
-                  onChange={e => { setEmail(e.target.value); setError(''); }}
-                  onKeyDown={e => e.key === 'Enter' && handleSend()}
-                  placeholder="you@example.com"
-                  autoFocus
-                  style={{ borderColor: error ? 'var(--red)' : undefined }}
-                />
-                {error && <div style={{ fontSize: 11, color: 'var(--red)', fontFamily: 'var(--font-mono)', marginTop: 6 }}>{error}</div>}
-              </div>
-
-              <button onClick={handleSend} disabled={loading} style={{ ...S.primaryBtn, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
-                {loading ? <><Spinner /> Sending…</> : 'Send Magic Link'}
-              </button>
-
-              <div style={{ marginTop: 20, padding: '12px 14px', background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 4 }}>
-                <div style={{ fontSize: 11, color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', lineHeight: 1.7 }}>
-                  First time? Your account is created automatically when you first sign in. Contact your chief if you have trouble accessing the app.
-                </div>
-              </div>
-            </>
-          ) : (
-            <div style={{ textAlign: 'center' }}>
-              <div style={{ fontSize: 32, marginBottom: 16 }}>✉️</div>
-              <div style={{ fontSize: 16, color: 'var(--text)', fontFamily: 'var(--font-serif)', marginBottom: 8 }}>Check your email</div>
-              <div style={{ fontSize: 12, color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', lineHeight: 1.7, marginBottom: 24 }}>
-                We sent a magic link to <span style={{ color: 'var(--gold)' }}>{email}</span>.<br />
-                Click it to sign in — it expires in 1 hour.
-              </div>
-              <button onClick={() => { setSent(false); setEmail(''); }} style={{ ...S.secondaryBtn, fontSize: 11 }}>
-                Use a different email
-              </button>
+          {/* Mode tabs */}
+          {mode !== 'reset' && (
+            <div style={{ display: 'flex', marginBottom: 24, border: '1px solid var(--border)', borderRadius: 6, overflow: 'hidden' }}>
+              {['signin','signup'].map(m => (
+                <button key={m} onClick={() => switchMode(m)} style={{ flex: 1, background: mode === m ? 'var(--gold-dim)' : 'transparent', border: 'none', borderRight: m === 'signin' ? '1px solid var(--border)' : 'none', color: mode === m ? 'var(--gold)' : 'var(--text-muted)', padding: '9px 0', fontSize: 11, letterSpacing: '0.1em', textTransform: 'uppercase', fontFamily: 'var(--font-mono)', cursor: 'pointer', transition: 'all 0.15s' }}>
+                  {m === 'signin' ? 'Sign In' : 'Create Account'}
+                </button>
+              ))}
             </div>
           )}
+
+          {mode === 'reset' && (
+            <div style={{ marginBottom: 20 }}>
+              <div style={{ fontSize: 14, color: 'var(--text)', fontFamily: 'var(--font-serif)', marginBottom: 6 }}>Reset Password</div>
+              <div style={{ fontSize: 12, color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', lineHeight: 1.6 }}>Enter your email and we'll send a reset link.</div>
+            </div>
+          )}
+
+          {/* Fields */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+            <div>
+              <label style={S.label}>Email address</label>
+              <input type="email" value={email} onChange={e => { setEmail(e.target.value); setError(''); }} onKeyDown={handleKey} placeholder="you@example.com" autoFocus autoComplete="email" />
+            </div>
+
+            {mode !== 'reset' && (
+              <div>
+                <label style={S.label}>Password</label>
+                <input type="password" value={password} onChange={e => { setPassword(e.target.value); setError(''); }} onKeyDown={handleKey} placeholder={mode === 'signup' ? 'At least 6 characters' : '••••••••'} autoComplete={mode === 'signin' ? 'current-password' : 'new-password'} />
+              </div>
+            )}
+
+            {mode === 'signup' && (
+              <div>
+                <label style={S.label}>Confirm Password</label>
+                <input type="password" value={confirmPassword} onChange={e => { setConfirmPassword(e.target.value); setError(''); }} onKeyDown={handleKey} placeholder="Re-enter password" autoComplete="new-password" />
+              </div>
+            )}
+          </div>
+
+          {error && <div style={{ fontSize: 12, color: 'var(--red)', fontFamily: 'var(--font-mono)', marginTop: 12, padding: '8px 12px', background: 'var(--red-dim)', borderRadius: 4 }}>{error}</div>}
+          {message && <div style={{ fontSize: 12, color: '#4aba7a', fontFamily: 'var(--font-mono)', marginTop: 12, padding: '8px 12px', background: 'rgba(40,120,60,0.15)', borderRadius: 4 }}>{message}</div>}
+
+          <button onClick={mode === 'signin' ? handleSignIn : mode === 'signup' ? handleSignUp : handleReset} disabled={loading}
+            style={{ ...S.primaryBtn, marginTop: 20, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+            {loading ? <><Spinner /> {mode === 'signin' ? 'Signing in…' : mode === 'signup' ? 'Creating account…' : 'Sending…'}</> : mode === 'signin' ? 'Sign In' : mode === 'signup' ? 'Create Account' : 'Send Reset Link'}
+          </button>
+
+          <div style={{ marginTop: 16, textAlign: 'center' }}>
+            {mode === 'reset' ? (
+              <button onClick={() => switchMode('signin')} style={{ ...S.ghostBtn, fontSize: 11, color: 'var(--text-muted)' }}>← Back to sign in</button>
+            ) : (
+              <button onClick={() => switchMode('reset')} style={{ ...S.ghostBtn, fontSize: 11, color: 'var(--text-muted)' }}>Forgot password?</button>
+            )}
+          </div>
         </div>
       </div>
     </div>
