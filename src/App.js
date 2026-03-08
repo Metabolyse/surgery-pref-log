@@ -1,15 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase } from './supabaseClient';
 import './index.css';
-import { useEditor, EditorContent } from '@tiptap/react';
-import StarterKit from '@tiptap/starter-kit';
-import Underline from '@tiptap/extension-underline';
-import Table from '@tiptap/extension-table';
-import TableRow from '@tiptap/extension-table-row';
-import TableCell from '@tiptap/extension-table-cell';
-import TableHeader from '@tiptap/extension-table-header';
-import TextAlign from '@tiptap/extension-text-align';
-import Placeholder from '@tiptap/extension-placeholder';
 
 // ── Constants ──────────────────────────────────────────────────────────────
 const DEFAULT_SPECIALTIES = ['General Surgery','Colorectal','Hepatobiliary','Foregut','Endocrine','Trauma','Vascular','Thoracic','Other'];
@@ -277,7 +268,6 @@ export default function App() {
     { key: 'phoneBook', label: 'Phone Book' },
     { key: 'debrief', label: 'Case Log' },
     { key: 'prefCards', label: 'My Pref Cards' },
-    { key: 'notebook', label: 'Notebook' },
     { key: 'archive', label: 'Archive' },
   ];
 
@@ -325,7 +315,6 @@ export default function App() {
               const active = t.key === 'list' ? ['list','detail','addAttending','addNote'].includes(view)
                 : t.key === 'debrief' ? ['debrief','addDebrief'].includes(view)
                 : t.key === 'prefCards' ? ['prefCards','editPrefCard'].includes(view)
-                : t.key === 'notebook' ? ['notebook','editNotebook'].includes(view)
                 : view === t.key;
               return (
                 <button key={t.key} onClick={() => setView(t.key)} style={{
@@ -369,8 +358,6 @@ export default function App() {
               {view === 'addDebrief' && <AddDebriefView attending={selectedAttending} allProcedures={allProcedures} attendings={attendings} navTo={navTo} showFlash={showFlash} loadData={loadData} userId={session.user.id} />}
               {view === 'prefCards' && <PrefCardsView allProcedures={allProcedures} navTo={navTo} showFlash={showFlash} userId={session.user.id} />}
               {view === 'editPrefCard' && <EditPrefCardView procedure={selectedProcedure} navTo={navTo} showFlash={showFlash} userId={session.user.id} />}
-              {view === 'notebook' && <NotebookView navTo={navTo} showFlash={showFlash} userId={session.user.id} />}
-              {view === 'editNotebook' && <EditNotebookView pageId={selectedProcedure} navTo={navTo} showFlash={showFlash} userId={session.user.id} />}
               {view === 'serviceInfo' && <ServiceInfoView showFlash={showFlash} />}
               {view === 'phoneBook' && <PhoneBookView showFlash={showFlash} />}
             </>
@@ -1610,7 +1597,7 @@ function ServiceInfoView({ showFlash }) {
   const [activeCategory, setActiveCategory] = useState(null);
   const [showAdd, setShowAdd] = useState(false);
   const [editingItem, setEditingItem] = useState(null);
-  const [form, setForm] = useState({ title: '', body: '', body_rich: null, category: '', service_id: '' });
+  const [form, setForm] = useState({ title: '', body: '', category: '', service_id: '' });
   const [saving, setSaving] = useState(false);
 
   // Manage services
@@ -1661,22 +1648,22 @@ function ServiceInfoView({ showFlash }) {
     if (!form.title.trim() || !form.body.trim() || !form.service_id || !form.category) return;
     setSaving(true);
     if (editingItem) {
-      await supabase.from('service_info').update({ title: form.title, body: form.body, body_rich: form.body_rich, category: form.category, service_id: form.service_id }).eq('id', editingItem.id);
+      await supabase.from('service_info').update({ title: form.title, body: form.body, category: form.category, service_id: form.service_id }).eq('id', editingItem.id);
       showFlash('Entry updated');
     } else {
-      await supabase.from('service_info').insert([{ title: form.title, body: form.body, body_rich: form.body_rich, category: form.category, service_id: form.service_id }]);
+      await supabase.from('service_info').insert([form]);
       showFlash('Entry added');
     }
     setSaving(false);
     await loadAll();
-    setForm({ title: '', body: '', body_rich: null, category: activeCategory, service_id: activeService });
+    setForm({ title: '', body: '', category: activeCategory, service_id: activeService });
     setShowAdd(false);
     setEditingItem(null);
   };
 
   const handleEdit = (item) => {
     setEditingItem(item);
-    setForm({ title: item.title, body: item.body || '', body_rich: item.body_rich || null, category: item.category, service_id: item.service_id });
+    setForm({ title: item.title, body: item.body, category: item.category, service_id: item.service_id });
     setShowAdd(true);
   };
 
@@ -1691,7 +1678,7 @@ function ServiceInfoView({ showFlash }) {
   const handleCancel = () => {
     setShowAdd(false);
     setEditingItem(null);
-    setForm({ title: '', body: '', body_rich: null, category: activeCategory, service_id: activeService });
+    setForm({ title: '', body: '', category: activeCategory, service_id: activeService });
   };
 
   // Add service
@@ -1880,24 +1867,16 @@ function ServiceInfoView({ showFlash }) {
                 </Field>
               )}
               <Field label={form.category === 'Dot Phrases' ? 'Dot Phrase Text *' : 'Details *'}>
-                {form.category === 'Dot Phrases' ? (
-                  <textarea value={form.body} onChange={e => setForm({...form, body: e.target.value, body_rich: null})}
-                    placeholder="Paste the full dot phrase text here..."
-                    rows={8}
-                    style={{ fontFamily: 'var(--font-mono)', fontSize: 12 }}
-                  />
-                ) : (
-                  <RichEditor
-                    content={form.body_rich || (form.body ? { type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: form.body }] }] } : null)}
-                    onChange={json => setForm(f => ({ ...f, body_rich: json, body: '' }))}
-                    placeholder={
-                      form.category === 'Follow-up Visits' ? 'e.g. All patients follow up in clinic 2 weeks post-op...'
-                      : form.category === 'Expectations' ? 'e.g. Pre-round on all surgical patients before 6am...'
-                      : 'Details...'
-                    }
-                    minHeight={140}
-                  />
-                )}
+                <textarea value={form.body} onChange={e => setForm({...form, body: e.target.value})}
+                  placeholder={
+                    form.category === 'Dot Phrases' ? 'Paste the full dot phrase text here...'
+                    : form.category === 'Follow-up Visits' ? 'e.g. All patients follow up in clinic 2 weeks post-op...'
+                    : form.category === 'Expectations' ? 'e.g. Pre-round on all surgical patients before 6am...'
+                    : 'Details...'
+                  }
+                  rows={form.category === 'Dot Phrases' ? 8 : 4}
+                  style={{ fontFamily: form.category === 'Dot Phrases' ? 'var(--font-mono)' : undefined, fontSize: form.category === 'Dot Phrases' ? 12 : undefined }}
+                />
               </Field>
               <div style={{ display: 'flex', gap: 8 }}>
                 <button onClick={handleCancel} style={{ ...S.secondaryBtn, flex: 1 }}>Cancel</button>
@@ -1927,7 +1906,15 @@ function ServiceInfoView({ showFlash }) {
                       onMouseLeave={e => e.currentTarget.style.color = '#5a3a2a'}>×</button>
                   </div>
                 </div>
-                <RichContent content={item.body_rich || item.body} isDotPhrase={item.category === 'Dot Phrases'} />
+                <pre style={{
+                  margin: 0, fontSize: item.category === 'Dot Phrases' ? 12 : 13,
+                  color: item.category === 'Dot Phrases' ? '#8ab0a0' : '#b0a880',
+                  fontFamily: item.category === 'Dot Phrases' ? 'var(--font-mono)' : 'var(--font-serif)',
+                  lineHeight: 1.7, whiteSpace: 'pre-wrap', wordBreak: 'break-word',
+                  background: item.category === 'Dot Phrases' ? 'rgba(0,0,0,0.2)' : 'transparent',
+                  padding: item.category === 'Dot Phrases' ? '10px 12px' : 0,
+                  borderRadius: item.category === 'Dot Phrases' ? 4 : 0
+                }}>{item.body}</pre>
                 <div style={{ marginTop: 8, fontSize: 10, color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>
                   Added {new Date(item.created_at).toLocaleDateString()}
                 </div>
@@ -2895,10 +2882,7 @@ function PrefCardsView({ allProcedures, navTo, showFlash, userId }) {
   const availableProcedures = allProcedures.filter(p => !existingProcedures.has(p));
   const filteredAvailable = availableProcedures.filter(p => p.toLowerCase().includes(pickerSearch.toLowerCase()));
 
-  const sectionCount = (card) => PREF_CARD_SECTIONS.filter(s => {
-    if (card[s.key + '_rich']) { try { return JSON.stringify(card[s.key + '_rich']).length > 50; } catch { return false; } }
-    return !!card[s.key]?.trim();
-  }).length;
+  const sectionCount = (card) => PREF_CARD_SECTIONS.filter(s => card[s.key]?.trim()).length;
 
   return (
     <div className="fade-in">
@@ -2985,15 +2969,13 @@ function EditPrefCardView({ procedure, navTo, showFlash, userId }) {
       if (data) {
         setCard(data);
         const f = {};
-        PREF_CARD_SECTIONS.forEach(s => {
-          f[s.key] = data[s.key] || '';
-          f[s.key + '_rich'] = data[s.key + '_rich'] || null;
-        });
+        PREF_CARD_SECTIONS.forEach(s => { f[s.key] = data[s.key] || ''; });
         setForm(f);
         setMode('view');
       } else {
+        // New card — go straight to edit
         const f = {};
-        PREF_CARD_SECTIONS.forEach(s => { f[s.key] = ''; f[s.key + '_rich'] = null; });
+        PREF_CARD_SECTIONS.forEach(s => { f[s.key] = ''; });
         setForm(f);
         setMode('edit');
       }
@@ -3004,9 +2986,7 @@ function EditPrefCardView({ procedure, navTo, showFlash, userId }) {
 
   const handleSave = async () => {
     setSaving(true);
-    const richFields = {};
-    PREF_CARD_SECTIONS.forEach(s => { richFields[s.key + '_rich'] = form[s.key + '_rich'] || null; });
-    const payload = { ...form, ...richFields, procedure, user_id: userId, updated_at: new Date().toISOString() };
+    const payload = { ...form, procedure, user_id: userId, updated_at: new Date().toISOString() };
     const { data, error } = await supabase.from('pref_cards').upsert([payload], { onConflict: 'user_id,procedure' }).select().single();
     setSaving(false);
     if (error) { showFlash('Error saving pref card', 'error'); return; }
@@ -3017,7 +2997,6 @@ function EditPrefCardView({ procedure, navTo, showFlash, userId }) {
   };
 
   const updateField = (key, val) => { setForm(f => ({ ...f, [key]: val })); setDirty(true); };
-  const updateRichField = (key, json) => { setForm(f => ({ ...f, [key + '_rich']: json, [key]: '' })); setDirty(true); };
 
   if (loading) return <div style={{ textAlign: 'center', padding: '60px 0' }}><Spinner /></div>;
 
@@ -3054,13 +3033,7 @@ function EditPrefCardView({ procedure, navTo, showFlash, userId }) {
 
   // ── View mode ──
   if (mode === 'view') {
-    const hasContent = (s) => {
-    if (form[s.key + '_rich']) {
-      try { return JSON.stringify(form[s.key + '_rich']).length > 50; } catch { return false; }
-    }
-    return !!form[s.key]?.trim();
-  };
-  const filledSections = PREF_CARD_SECTIONS.filter(s => hasContent(s));
+    const filledSections = PREF_CARD_SECTIONS.filter(s => form[s.key]?.trim());
     return (
       <div className="fade-in">
         <button onClick={() => navTo('prefCards')} style={S.backBtn}>← My Pref Cards</button>
@@ -3086,7 +3059,7 @@ function EditPrefCardView({ procedure, navTo, showFlash, userId }) {
             {filledSections.map(s => (
               <div key={s.key} style={{ ...S.card }}>
                 <div style={S.divider}>{s.label}</div>
-                <RichContent content={form[s.key + '_rich'] || form[s.key]} />
+                <div style={{ fontSize: 14, color: '#d8d0b8', lineHeight: 1.7, fontFamily: 'var(--font-serif)', whiteSpace: 'pre-wrap' }}>{form[s.key]}</div>
               </div>
             ))}
           </div>
@@ -3125,16 +3098,17 @@ function EditPrefCardView({ procedure, navTo, showFlash, userId }) {
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
         {PREF_CARD_SECTIONS.map(s => (
-          <div key={s.key} style={{ ...S.card, background: hasContent(s) ? 'var(--bg2)' : 'rgba(255,255,255,0.015)', borderColor: hasContent(s) ? 'var(--border)' : 'rgba(255,255,255,0.05)' }}>
+          <div key={s.key} style={{ ...S.card, background: form[s.key]?.trim() ? 'var(--bg2)' : 'rgba(255,255,255,0.015)', borderColor: form[s.key]?.trim() ? 'var(--border)' : 'rgba(255,255,255,0.05)' }}>
             <div style={{ ...S.divider, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <span>{s.label}</span>
-              {hasContent(s) && <span style={{ fontSize: 9, color: '#4a7a5a', fontFamily: 'var(--font-mono)', letterSpacing: '0.1em' }}>✓ FILLED</span>}
+              {form[s.key]?.trim() && <span style={{ fontSize: 9, color: '#4a7a5a', fontFamily: 'var(--font-mono)', letterSpacing: '0.1em' }}>✓ FILLED</span>}
             </div>
-            <RichEditor
-              content={form[s.key + '_rich'] || (form[s.key] ? { type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: form[s.key] }] }] } : null)}
-              onChange={json => updateRichField(s.key, json)}
+            <textarea
+              value={form[s.key]}
+              onChange={e => updateField(s.key, e.target.value)}
               placeholder={s.placeholder}
-              minHeight={100}
+              rows={3}
+              style={{ fontSize: 13 }}
             />
           </div>
         ))}
@@ -3142,332 +3116,6 @@ function EditPrefCardView({ procedure, navTo, showFlash, userId }) {
         <button onClick={handleSave} disabled={saving} style={{ ...S.primaryBtn, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
           {saving ? <><Spinner /> Saving…</> : 'Save Pref Card'}
         </button>
-      </div>
-    </div>
-  );
-}
-
-
-// ── Rich Text Editor (Tiptap) ─────────────────────────────────────────────
-const { useEditor, EditorContent } = window.TiptapReact || {};
-
-function RichEditor({ content, onChange, placeholder, minHeight = 160 }) {
-  const editor = useEditor({
-    extensions: [
-      StarterKit,
-      Underline,
-      Table.configure({ resizable: false }),
-      TableRow,
-      TableCell,
-      TableHeader,
-      TextAlign.configure({ types: ['heading', 'paragraph'] }),
-      Placeholder.configure({ placeholder: placeholder || 'Start typing...' }),
-    ],
-    content: content || '',
-    onUpdate: ({ editor }) => onChange && onChange(editor.getJSON()),
-    editorProps: {
-      attributes: {
-        style: `min-height:${minHeight}px; outline:none; padding: 12px 14px; font-family: var(--font-serif); font-size: 14px; line-height: 1.75; color: #d0c8b0;`,
-      },
-    },
-  });
-
-  if (!editor) return null;
-
-  const ToolBtn = ({ onClick, active, title, children }) => (
-    <button
-      onMouseDown={e => { e.preventDefault(); onClick(); }}
-      title={title}
-      style={{
-        background: active ? 'rgba(200,168,64,0.2)' : 'transparent',
-        border: `1px solid ${active ? 'rgba(200,168,64,0.4)' : 'transparent'}`,
-        borderRadius: 4,
-        color: active ? 'var(--gold)' : 'var(--text-muted)',
-        padding: '3px 7px',
-        fontSize: 12,
-        cursor: 'pointer',
-        fontFamily: 'var(--font-mono)',
-        transition: 'all 0.12s',
-        minWidth: 26,
-        display: 'inline-flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-      }}
-    >{children}</button>
-  );
-
-  const Divider = () => <span style={{ width: 1, height: 16, background: 'rgba(255,255,255,0.1)', display: 'inline-block', margin: '0 2px', verticalAlign: 'middle' }} />;
-
-  return (
-    <div style={{ border: '1px solid var(--border)', borderRadius: 'var(--radius)', background: 'var(--bg)', overflow: 'hidden' }}>
-      {/* Toolbar */}
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 2, padding: '6px 8px', borderBottom: '1px solid var(--border)', background: 'rgba(255,255,255,0.02)' }}>
-        <ToolBtn onClick={() => editor.chain().focus().toggleBold().run()} active={editor.isActive('bold')} title="Bold">B</ToolBtn>
-        <ToolBtn onClick={() => editor.chain().focus().toggleItalic().run()} active={editor.isActive('italic')} title="Italic"><em>I</em></ToolBtn>
-        <ToolBtn onClick={() => editor.chain().focus().toggleUnderline().run()} active={editor.isActive('underline')} title="Underline"><u>U</u></ToolBtn>
-        <ToolBtn onClick={() => editor.chain().focus().toggleStrike().run()} active={editor.isActive('strike')} title="Strikethrough"><s>S</s></ToolBtn>
-        <Divider />
-        <ToolBtn onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()} active={editor.isActive('heading', { level: 2 })} title="Heading 2">H2</ToolBtn>
-        <ToolBtn onClick={() => editor.chain().focus().toggleHeading({ level: 3 }).run()} active={editor.isActive('heading', { level: 3 })} title="Heading 3">H3</ToolBtn>
-        <Divider />
-        <ToolBtn onClick={() => editor.chain().focus().toggleBulletList().run()} active={editor.isActive('bulletList')} title="Bullet list">•—</ToolBtn>
-        <ToolBtn onClick={() => editor.chain().focus().toggleOrderedList().run()} active={editor.isActive('orderedList')} title="Numbered list">1.</ToolBtn>
-        <Divider />
-        <ToolBtn onClick={() => editor.chain().focus().toggleCodeBlock().run()} active={editor.isActive('codeBlock')} title="Code block">{`</>`}</ToolBtn>
-        <ToolBtn onClick={() => editor.chain().focus().toggleBlockquote().run()} active={editor.isActive('blockquote')} title="Blockquote">"</ToolBtn>
-        <Divider />
-        <ToolBtn onClick={() => editor.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run()} active={false} title="Insert table">⊞</ToolBtn>
-        {editor.isActive('table') && <>
-          <ToolBtn onClick={() => editor.chain().focus().addColumnAfter().run()} title="Add column">+col</ToolBtn>
-          <ToolBtn onClick={() => editor.chain().focus().addRowAfter().run()} title="Add row">+row</ToolBtn>
-          <ToolBtn onClick={() => editor.chain().focus().deleteTable().run()} title="Delete table">✕tbl</ToolBtn>
-        </>}
-        <Divider />
-        <ToolBtn onClick={() => editor.chain().focus().undo().run()} title="Undo">↩</ToolBtn>
-        <ToolBtn onClick={() => editor.chain().focus().redo().run()} title="Redo">↪</ToolBtn>
-      </div>
-
-      {/* Editor area */}
-      <EditorContent editor={editor} />
-
-      {/* Tiptap styles */}
-      <style>{`
-        .tiptap p { margin: 0 0 8px; }
-        .tiptap p:last-child { margin-bottom: 0; }
-        .tiptap h2 { font-size: 18px; font-weight: 600; color: var(--text); margin: 16px 0 8px; font-family: var(--font-serif); }
-        .tiptap h3 { font-size: 15px; font-weight: 600; color: var(--text); margin: 12px 0 6px; font-family: var(--font-serif); }
-        .tiptap ul { padding-left: 20px; margin: 6px 0; }
-        .tiptap ol { padding-left: 20px; margin: 6px 0; }
-        .tiptap li { margin-bottom: 3px; }
-        .tiptap strong { color: var(--text); }
-        .tiptap em { color: #c0b898; }
-        .tiptap u { text-decoration: underline; }
-        .tiptap s { text-decoration: line-through; opacity: 0.6; }
-        .tiptap blockquote { border-left: 3px solid rgba(200,168,64,0.4); padding-left: 12px; margin: 8px 0; color: #9a8a6a; font-style: italic; }
-        .tiptap code { background: rgba(0,0,0,0.3); padding: 1px 5px; border-radius: 3px; font-family: var(--font-mono); font-size: 12px; color: #9ab0a0; }
-        .tiptap pre { background: rgba(0,0,0,0.3); border-radius: 6px; padding: 12px 14px; margin: 8px 0; overflow-x: auto; }
-        .tiptap pre code { background: transparent; padding: 0; font-size: 12px; }
-        .tiptap table { border-collapse: collapse; width: 100%; margin: 10px 0; }
-        .tiptap table td, .tiptap table th { border: 1px solid rgba(255,255,255,0.15); padding: 7px 10px; min-width: 60px; }
-        .tiptap table th { background: rgba(200,168,64,0.08); color: var(--gold); font-size: 12px; letter-spacing: 0.05em; font-family: var(--font-mono); }
-        .tiptap table tr:nth-child(even) td { background: rgba(255,255,255,0.02); }
-        .tiptap .is-editor-empty:first-child::before { content: attr(data-placeholder); color: rgba(255,255,255,0.2); pointer-events: none; float: left; height: 0; font-style: italic; }
-        .tiptap-readonly .tiptap { pointer-events: none; }
-      `}</style>
-    </div>
-  );
-}
-
-// Render rich JSON content as read-only HTML
-function RichContent({ content, isDotPhrase }) {
-  if (!content) return null;
-  // Plain text fallback
-  if (typeof content === 'string') {
-    return (
-      <pre style={{ margin: 0, fontSize: isDotPhrase ? 12 : 13, color: isDotPhrase ? '#8ab0a0' : '#b0a880', fontFamily: isDotPhrase ? 'var(--font-mono)' : 'var(--font-serif)', lineHeight: 1.7, whiteSpace: 'pre-wrap', wordBreak: 'break-word', background: isDotPhrase ? 'rgba(0,0,0,0.2)' : 'transparent', padding: isDotPhrase ? '10px 12px' : 0, borderRadius: isDotPhrase ? 4 : 0 }}>{content}</pre>
-    );
-  }
-  // Render JSON doc
-  const renderNode = (node, i) => {
-    if (!node) return null;
-    const children = node.content ? node.content.map((n, j) => renderNode(n, j)) : null;
-    const marks = node.marks || [];
-    let el = children;
-    if (node.type === 'text') {
-      el = node.text;
-      marks.forEach(m => {
-        if (m.type === 'bold') el = <strong key={i}>{el}</strong>;
-        else if (m.type === 'italic') el = <em key={i}>{el}</em>;
-        else if (m.type === 'underline') el = <u key={i}>{el}</u>;
-        else if (m.type === 'strike') el = <s key={i}>{el}</s>;
-        else if (m.type === 'code') el = <code key={i} style={{ background: 'rgba(0,0,0,0.3)', padding: '1px 5px', borderRadius: 3, fontFamily: 'var(--font-mono)', fontSize: 12, color: '#9ab0a0' }}>{el}</code>;
-      });
-      return <span key={i}>{el}</span>;
-    }
-    switch (node.type) {
-      case 'doc': return <div key={i} style={{ fontSize: 13.5, color: '#d0c8b0', lineHeight: 1.75, fontFamily: 'var(--font-serif)' }}>{children}</div>;
-      case 'paragraph': return <p key={i} style={{ margin: '0 0 6px' }}>{children || <br />}</p>;
-      case 'heading': return node.attrs?.level === 2
-        ? <h2 key={i} style={{ fontSize: 17, fontWeight: 600, color: 'var(--text)', margin: '14px 0 6px', fontFamily: 'var(--font-serif)' }}>{children}</h2>
-        : <h3 key={i} style={{ fontSize: 14, fontWeight: 600, color: 'var(--text)', margin: '10px 0 4px', fontFamily: 'var(--font-serif)' }}>{children}</h3>;
-      case 'bulletList': return <ul key={i} style={{ paddingLeft: 20, margin: '4px 0' }}>{children}</ul>;
-      case 'orderedList': return <ol key={i} style={{ paddingLeft: 20, margin: '4px 0' }}>{children}</ol>;
-      case 'listItem': return <li key={i} style={{ marginBottom: 2 }}>{children}</li>;
-      case 'blockquote': return <blockquote key={i} style={{ borderLeft: '3px solid rgba(200,168,64,0.4)', paddingLeft: 12, margin: '6px 0', color: '#9a8a6a', fontStyle: 'italic' }}>{children}</blockquote>;
-      case 'codeBlock': return <pre key={i} style={{ background: 'rgba(0,0,0,0.3)', borderRadius: 6, padding: '10px 12px', margin: '6px 0', overflow: 'auto' }}><code style={{ fontFamily: 'var(--font-mono)', fontSize: 12, color: '#9ab0a0' }}>{children}</code></pre>;
-      case 'table': return <table key={i} style={{ borderCollapse: 'collapse', width: '100%', margin: '8px 0' }}><tbody>{children}</tbody></table>;
-      case 'tableRow': return <tr key={i}>{children}</tr>;
-      case 'tableHeader': return <th key={i} style={{ border: '1px solid rgba(255,255,255,0.15)', padding: '6px 10px', background: 'rgba(200,168,64,0.08)', color: 'var(--gold)', fontSize: 11, fontFamily: 'var(--font-mono)', textAlign: 'left' }}>{children}</th>;
-      case 'tableCell': return <td key={i} style={{ border: '1px solid rgba(255,255,255,0.15)', padding: '6px 10px' }}>{children}</td>;
-      case 'hardBreak': return <br key={i} />;
-      case 'horizontalRule': return <hr key={i} style={{ border: 'none', borderTop: '1px solid var(--border)', margin: '10px 0' }} />;
-      default: return <span key={i}>{children}</span>;
-    }
-  };
-  try { return renderNode(content, 0); } catch { return null; }
-}
-
-// ── Notebook View ─────────────────────────────────────────────────────────
-function NotebookView({ navTo, showFlash, userId }) {
-  const [pages, setPages] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [showNew, setShowNew] = useState(false);
-  const [newTitle, setNewTitle] = useState('');
-  const [saving, setSaving] = useState(false);
-
-  const load = useCallback(async () => {
-    setLoading(true);
-    const { data } = await supabase.from('notebook_pages').select('id, title, service, updated_at, created_at').order('updated_at', { ascending: false });
-    setPages(data || []);
-    setLoading(false);
-  }, []);
-
-  useEffect(() => { load(); }, [load]);
-
-  const handleCreate = async () => {
-    const title = newTitle.trim();
-    if (!title) return;
-    setSaving(true);
-    const { data, error } = await supabase.from('notebook_pages').insert([{ title, user_id: userId }]).select().single();
-    setSaving(false);
-    if (error) { showFlash('Error creating page', 'error'); return; }
-    setShowNew(false);
-    setNewTitle('');
-    navTo('editNotebook', null, data.id);
-  };
-
-  const handleDelete = async (page) => {
-    if (!window.confirm(`Delete "${page.title}"? This cannot be undone.`)) return;
-    await supabase.from('notebook_pages').delete().eq('id', page.id);
-    await load();
-    showFlash('Page deleted', 'error');
-  };
-
-  return (
-    <div className="fade-in">
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 6 }}>
-        <div>
-          <h2 style={S.sectionHead}>Notebook</h2>
-          <p style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 20, fontStyle: 'italic' }}>
-            Personal notes with rich formatting — private to your account.
-          </p>
-        </div>
-        <button onClick={() => setShowNew(true)} style={{ ...S.secondaryBtn, flexShrink: 0, color: '#7aacca', borderColor: 'rgba(100,140,180,0.3)' }}>+ New Page</button>
-      </div>
-
-      {showNew && (
-        <div style={{ ...S.card, marginBottom: 20, borderColor: 'rgba(100,140,180,0.25)', background: 'rgba(40,60,100,0.08)' }}>
-          <div style={{ fontSize: 11, color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', marginBottom: 10, letterSpacing: '0.1em', textTransform: 'uppercase' }}>New Page</div>
-          <input value={newTitle} onChange={e => setNewTitle(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleCreate()} placeholder="Page title..." autoFocus style={{ marginBottom: 10 }} />
-          <div style={{ display: 'flex', gap: 8 }}>
-            <button onClick={() => { setShowNew(false); setNewTitle(''); }} style={{ ...S.secondaryBtn, flex: 1 }}>Cancel</button>
-            <button onClick={handleCreate} style={{ ...S.primaryBtn, flex: 3 }} disabled={saving}>{saving ? <Spinner /> : 'Create Page'}</button>
-          </div>
-        </div>
-      )}
-
-      {loading ? <div style={{ textAlign: 'center', padding: 40 }}><Spinner /></div>
-      : pages.length === 0 ? (
-        <div style={{ textAlign: 'center', padding: '50px 20px', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', fontSize: 12, border: '1px dashed rgba(255,255,255,0.07)', borderRadius: 6 }}>
-          No pages yet. Create your first notebook page.
-        </div>
-      ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-          {pages.map(p => (
-            <div key={p.id} style={{ ...S.card, display: 'flex', alignItems: 'center', gap: 14, cursor: 'pointer' }} onClick={() => navTo('editNotebook', null, p.id)}>
-              <div style={{ flex: 1 }}>
-                <div style={{ fontSize: 16, color: 'var(--text)', fontFamily: 'var(--font-serif)' }}>{p.title}</div>
-                <div style={{ fontSize: 11, color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', marginTop: 3 }}>
-                  {p.service && <span style={{ marginRight: 8, color: '#5a7a6a' }}>{p.service}</span>}
-                  updated {new Date(p.updated_at).toLocaleDateString()}
-                </div>
-              </div>
-              <button onClick={e => { e.stopPropagation(); handleDelete(p); }} style={{ background: 'none', border: 'none', color: '#3a3a3a', fontSize: 18, cursor: 'pointer', flexShrink: 0, transition: 'color 0.15s', padding: '0 4px' }}
-                onMouseEnter={e => e.currentTarget.style.color = '#8a4a3a'}
-                onMouseLeave={e => e.currentTarget.style.color = '#3a3a3a'}>×</button>
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ── Edit Notebook Page ────────────────────────────────────────────────────
-function EditNotebookView({ pageId, navTo, showFlash, userId }) {
-  const [page, setPage] = useState(null);
-  const [title, setTitle] = useState('');
-  const [richContent, setRichContent] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [dirty, setDirty] = useState(false);
-  const saveTimer = useRef(null);
-
-  useEffect(() => {
-    const load = async () => {
-      setLoading(true);
-      const { data } = await supabase.from('notebook_pages').select('*').eq('id', pageId).single();
-      if (data) { setPage(data); setTitle(data.title); setRichContent(data.content || null); }
-      setLoading(false);
-    };
-    load();
-  }, [pageId]);
-
-  // Auto-save after 1.5s of inactivity
-  const autoSave = useCallback(async (t, c) => {
-    await supabase.from('notebook_pages').update({ title: t, content: c, updated_at: new Date().toISOString() }).eq('id', pageId);
-    setDirty(false);
-  }, [pageId]);
-
-  const handleChange = (newContent) => {
-    setRichContent(newContent);
-    setDirty(true);
-    if (saveTimer.current) clearTimeout(saveTimer.current);
-    saveTimer.current = setTimeout(() => autoSave(title, newContent), 1500);
-  };
-
-  const handleTitleBlur = () => {
-    if (dirty || title !== page?.title) autoSave(title, richContent);
-  };
-
-  const handleSave = async () => {
-    setSaving(true);
-    if (saveTimer.current) clearTimeout(saveTimer.current);
-    await autoSave(title, richContent);
-    setSaving(false);
-    showFlash('Page saved');
-  };
-
-  if (loading) return <div style={{ textAlign: 'center', padding: '60px 0' }}><Spinner /></div>;
-  if (!page) return <div style={{ color: 'var(--text-muted)', padding: 40, textAlign: 'center' }}>Page not found.</div>;
-
-  return (
-    <div className="fade-in">
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-        <button onClick={() => { if (saveTimer.current) clearTimeout(saveTimer.current); autoSave(title, richContent); navTo('notebook'); }} style={S.backBtn}>← Notebook</button>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          {dirty && <span style={{ fontSize: 10, color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>unsaved</span>}
-          <button onClick={handleSave} disabled={saving} style={{ ...S.secondaryBtn, fontSize: 10 }}>{saving ? <Spinner /> : 'Save'}</button>
-        </div>
-      </div>
-
-      <input
-        value={title}
-        onChange={e => { setTitle(e.target.value); setDirty(true); }}
-        onBlur={handleTitleBlur}
-        placeholder="Page title..."
-        style={{ fontSize: 22, fontFamily: 'var(--font-serif)', fontWeight: 300, color: 'var(--text)', background: 'transparent', border: 'none', borderBottom: '1px solid var(--border)', borderRadius: 0, padding: '4px 0', marginBottom: 20, width: '100%', outline: 'none' }}
-      />
-
-      <RichEditor
-        content={richContent}
-        onChange={handleChange}
-        placeholder="Start writing your notes..."
-        minHeight={400}
-      />
-
-      <div style={{ marginTop: 8, fontSize: 10, color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', textAlign: 'right' }}>
-        Auto-saves as you type · Last saved {page.updated_at ? new Date(page.updated_at).toLocaleTimeString() : 'never'}
       </div>
     </div>
   );
