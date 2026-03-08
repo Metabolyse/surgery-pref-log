@@ -131,12 +131,18 @@ export default function App() {
   }, []);
 
   // ── Auth session ──
-  const [authEvent, setAuthEvent] = useState(null);
+  const [authEvent, setAuthEvent] = useState(() => {
+    // Detect password recovery from URL hash on initial load
+    const hash = window.location.hash;
+    if (hash.includes('type=recovery')) return 'PASSWORD_RECOVERY';
+    return null;
+  });
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => setSession(session));
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       setSession(session);
-      setAuthEvent(event);
+      if (event === 'PASSWORD_RECOVERY') setAuthEvent('PASSWORD_RECOVERY');
+      else if (event === 'SIGNED_IN' && authEvent !== 'PASSWORD_RECOVERY') setAuthEvent(event);
     });
     return () => subscription.unsubscribe();
   }, []);
@@ -2662,6 +2668,11 @@ function ResetPasswordView({ onDone }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [done, setDone] = useState(false);
+
+  // Clean the recovery token from the URL bar
+  useEffect(() => {
+    window.history.replaceState(null, '', window.location.pathname);
+  }, []);
 
   const handleSave = async () => {
     if (password.length < 6) { setError('Password must be at least 6 characters.'); return; }
