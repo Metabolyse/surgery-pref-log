@@ -300,13 +300,35 @@ export default function App() {
             </div>
           </div>
 
-          {/* Tabs — always visible */}
-          <div style={{ display: 'flex', gap: 0, overflowX: 'auto' }}>
-            {TABS.map(t => (
-              <button key={t.key} onClick={() => setView(t.key)} style={{ background: 'none', border: 'none', borderBottom: (t.key === 'list' ? ['list','detail','addAttending','addNote'].includes(view) : t.key === 'debrief' ? ['debrief','addDebrief'].includes(view) : t.key === 'prefCards' ? ['prefCards','editPrefCard'].includes(view) : t.key === 'serviceInfo' ? view === 'serviceInfo' : view === t.key) ? '2px solid var(--gold)' : '2px solid transparent', color: (t.key === 'list' ? ['list','detail','addAttending','addNote'].includes(view) : t.key === 'debrief' ? ['debrief','addDebrief'].includes(view) : t.key === 'prefCards' ? ['prefCards','editPrefCard'].includes(view) : t.key === 'serviceInfo' ? view === 'serviceInfo' : view === t.key) ? 'var(--gold)' : 'var(--text-muted)', padding: '10px 16px', fontSize: 11, letterSpacing: '0.12em', textTransform: 'uppercase', marginBottom: -1, transition: 'all 0.15s', cursor: 'pointer', whiteSpace: 'nowrap' }}>
-                {t.label}
-              </button>
-            ))}
+          {/* Tabs — 2×4 grid */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 4, paddingBottom: 4 }}>
+            {TABS.map(t => {
+              const active = t.key === 'list' ? ['list','detail','addAttending','addNote'].includes(view)
+                : t.key === 'debrief' ? ['debrief','addDebrief'].includes(view)
+                : t.key === 'prefCards' ? ['prefCards','editPrefCard'].includes(view)
+                : view === t.key;
+              return (
+                <button key={t.key} onClick={() => setView(t.key)} style={{
+                  background: active ? 'rgba(200,168,64,0.12)' : 'rgba(255,255,255,0.03)',
+                  border: `1px solid ${active ? 'rgba(200,168,64,0.4)' : 'rgba(255,255,255,0.07)'}`,
+                  borderRadius: 6,
+                  color: active ? 'var(--gold)' : 'var(--text-muted)',
+                  padding: '9px 4px',
+                  fontSize: 10,
+                  letterSpacing: '0.1em',
+                  textTransform: 'uppercase',
+                  fontFamily: 'var(--font-mono)',
+                  transition: 'all 0.15s',
+                  cursor: 'pointer',
+                  whiteSpace: 'nowrap',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  gridColumn: TABS.indexOf(t) === TABS.length - 1 && TABS.length % 4 !== 0 ? `span ${4 - ((TABS.length - 1) % 4)}` : undefined,
+                }}>
+                  {t.label}
+                </button>
+              );
+            })}
           </div>
         </div>
 
