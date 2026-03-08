@@ -107,6 +107,7 @@ export default function App() {
   const [adminUnlocked, setAdminUnlocked] = useState(false);
   const [showAdminModal, setShowAdminModal] = useState(false);
   const [pendingAdminAction, setPendingAdminAction] = useState(null);
+  const [session, setSession] = useState(undefined); // undefined = loading, null = logged out
 
   const requireAdmin = (action) => {
     if (adminUnlocked) { action(); return; }
@@ -127,6 +128,15 @@ export default function App() {
   const showFlash = useCallback((msg, type = 'success') => {
     setFlash({ msg, type });
     setTimeout(() => setFlash(null), 2500);
+  }, []);
+
+  // ── Auth session ──
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => setSession(session));
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setSession(session);
+    });
+    return () => subscription.unsubscribe();
   }, []);
 
   // ── Load data ──
@@ -252,6 +262,10 @@ export default function App() {
     { key: 'archive', label: 'Archive' },
   ];
 
+  // Show nothing while session loads, login screen if not authed
+  if (session === undefined) return <div style={{ minHeight: '100vh', background: 'var(--bg)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Spinner /></div>;
+  if (!session) return <LoginView />;
+
   return (
     <div style={{ minHeight: '100vh', background: 'var(--bg)', position: 'relative' }}>
       <div style={{ position: 'fixed', inset: 0, pointerEvents: 'none', background: 'radial-gradient(ellipse at 15% 60%, rgba(180,120,40,0.05) 0%, transparent 55%), radial-gradient(ellipse at 85% 15%, rgba(40,80,160,0.06) 0%, transparent 50%)', zIndex: 0 }} />
@@ -278,6 +292,10 @@ export default function App() {
               <div style={{ fontSize: 11, color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', paddingLeft: 4 }}>
                 {attendings.length} attendings · {attendings.reduce((n,a) => n + a.prefs.length, 0)} notes
               </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, borderLeft: '1px solid rgba(255,255,255,0.07)', paddingLeft: 12, marginLeft: 4 }}>
+                <span style={{ fontSize: 10, color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', letterSpacing: '0.04em' }}>{session.user.email}</span>
+                <button onClick={() => supabase.auth.signOut()} style={{ ...S.ghostBtn, fontSize: 10, color: '#5a4a3a' }}>Sign out</button>
+              </div>
             </div>
           </div>
 
@@ -298,14 +316,14 @@ export default function App() {
             <>
               {view === 'list' && <ListView attendings={filtered} search={search} setSearch={setSearch} navTo={navTo} showFlash={showFlash} loadData={loadData} allProcedures={allProcedures} />}
               {view === 'addAttending' && <AddAttendingView navTo={navTo} showFlash={showFlash} loadData={loadData} allSpecialties={allSpecialties} customSpecialties={customSpecialties} />}
-              {view === 'detail' && selectedAttending && <DetailView attending={selectedAttending} selectedProcedure={selectedProcedure} setSelectedProcedure={setSelectedProcedure} navTo={navTo} showFlash={showFlash} loadData={loadData} getProceduresForAttending={getProceduresForAttending} getPrefsForProcedure={getPrefsForProcedure} allProcedures={allProcedures} allSpecialties={allSpecialties} customSpecialties={customSpecialties} allPrefCategories={allPrefCategories} />}
+              {view === 'detail' && selectedAttending && <DetailView attending={selectedAttending} selectedProcedure={selectedProcedure} setSelectedProcedure={setSelectedProcedure} navTo={navTo} showFlash={showFlash} loadData={loadData} getProceduresForAttending={getProceduresForAttending} getPrefsForProcedure={getPrefsForProcedure} allProcedures={allProcedures} allSpecialties={allSpecialties} customSpecialties={customSpecialties} allPrefCategories={allPrefCategories} userId={session.user.id} />}
               {view === 'addNote' && selectedAttending && <AddNoteView attending={selectedAttending} selectedProcedure={selectedProcedure} navTo={navTo} showFlash={showFlash} loadData={loadData} allProcedures={allProcedures} allPrefCategories={allPrefCategories} />}
               {view === 'resources' && <ResourcesView allProcedures={allProcedures} showFlash={showFlash} />}
               {view === 'opNote' && <OpNoteView allProcedures={allProcedures} attendings={attendings} getPrefsForProcedure={getPrefsForProcedure} />}
               {view === 'procedures' && <ProceduresView customProcedures={customProcedures} loadData={loadData} showFlash={showFlash} allProcedures={allProcedures} attendings={attendings} />}
               {view === 'archive' && <ArchiveView showFlash={showFlash} loadData={loadData} requireAdmin={requireAdmin} />}
-              {view === 'debrief' && <DebriefView attendings={attendings} allProcedures={allProcedures} navTo={navTo} showFlash={showFlash} />}
-              {view === 'addDebrief' && <AddDebriefView attending={selectedAttending} allProcedures={allProcedures} attendings={attendings} navTo={navTo} showFlash={showFlash} loadData={loadData} />}
+              {view === 'debrief' && <DebriefView attendings={attendings} allProcedures={allProcedures} navTo={navTo} showFlash={showFlash} userId={session.user.id} />}
+              {view === 'addDebrief' && <AddDebriefView attending={selectedAttending} allProcedures={allProcedures} attendings={attendings} navTo={navTo} showFlash={showFlash} loadData={loadData} userId={session.user.id} />}
               {view === 'serviceInfo' && <ServiceInfoView showFlash={showFlash} />}
               {view === 'phoneBook' && <PhoneBookView showFlash={showFlash} />}
             </>
@@ -493,7 +511,7 @@ function ProcedureResourcesInline({ procedure }) {
 }
 
 // ── Detail View ────────────────────────────────────────────────────────────
-function DetailView({ attending, selectedProcedure, setSelectedProcedure, navTo, showFlash, loadData, getProceduresForAttending, getPrefsForProcedure, allProcedures, allSpecialties, customSpecialties, allPrefCategories }) {
+function DetailView({ attending, selectedProcedure, setSelectedProcedure, navTo, showFlash, loadData, getProceduresForAttending, getPrefsForProcedure, allProcedures, allSpecialties, customSpecialties, allPrefCategories, userId }) {
   const [deleting, setDeleting] = useState(false);
   const [editingAttending, setEditingAttending] = useState(false);
   const [editingPref, setEditingPref] = useState(null); // pref object being edited
@@ -685,7 +703,7 @@ function DetailView({ attending, selectedProcedure, setSelectedProcedure, navTo,
       </div>
 
       {/* Case Log inline */}
-      <AttendingDebriefInline attending={attending} selectedProcedure={selectedProcedure} navTo={navTo} />
+      <AttendingDebriefInline attending={attending} selectedProcedure={selectedProcedure} navTo={navTo} userId={userId} />
     </div>
   );
 }
@@ -2027,7 +2045,7 @@ function StarRating({ value, onChange, color = 'var(--gold)' }) {
 }
 
 // ── Attending Debrief Inline (shown on detail page) ───────────────────────
-function AttendingDebriefInline({ attending, selectedProcedure, navTo }) {
+function AttendingDebriefInline({ attending, selectedProcedure, navTo, userId }) {
   const [debriefs, setDebriefs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [expanded, setExpanded] = useState(null);
@@ -2101,7 +2119,7 @@ function AttendingDebriefInline({ attending, selectedProcedure, navTo }) {
 }
 
 // ── Add Debrief View ───────────────────────────────────────────────────────
-function AddDebriefView({ attending: preselectedAttending, allProcedures, attendings, navTo, showFlash, loadData }) {
+function AddDebriefView({ attending: preselectedAttending, allProcedures, attendings, navTo, showFlash, loadData, userId }) {
   const today = new Date().toISOString().split('T')[0];
   const [form, setForm] = useState({
     attending_id: preselectedAttending?.id || '',
@@ -2130,6 +2148,7 @@ function AddDebriefView({ attending: preselectedAttending, allProcedures, attend
         ...rest,
         difficulty: difficulty || null,
         comfort: comfort || null,
+        user_id: userId,
       }]);
 
       // Optionally save pearls to preference log
@@ -2257,7 +2276,7 @@ function AddDebriefView({ attending: preselectedAttending, allProcedures, attend
 }
 
 // ── Debrief View (browse all) ─────────────────────────────────────────────
-function DebriefView({ attendings, allProcedures, navTo, showFlash }) {
+function DebriefView({ attendings, allProcedures, navTo, showFlash, userId }) {
   const [debriefs, setDebriefs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [filterAttending, setFilterAttending] = useState('');
@@ -2418,6 +2437,93 @@ function DebriefView({ attendings, allProcedures, navTo, showFlash }) {
           })}
         </div>
       )}
+    </div>
+  );
+}
+
+
+// ── Login View ─────────────────────────────────────────────────────────────
+function LoginView() {
+  const [email, setEmail] = useState('');
+  const [sent, setSent] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+
+  const handleSend = async () => {
+    if (!email.trim() || !email.includes('@')) { setError('Please enter a valid email address.'); return; }
+    setLoading(true);
+    setError('');
+    const { error } = await supabase.auth.signInWithOtp({
+      email: email.trim(),
+      options: {
+        shouldCreateUser: true,
+      }
+    });
+    setLoading(false);
+    if (error) { setError(error.message); return; }
+    setSent(true);
+  };
+
+  return (
+    <div style={{ minHeight: '100vh', background: 'var(--bg)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24, position: 'relative' }}>
+      <div style={{ position: 'fixed', inset: 0, pointerEvents: 'none', background: 'radial-gradient(ellipse at 20% 60%, rgba(180,120,40,0.06) 0%, transparent 55%), radial-gradient(ellipse at 80% 20%, rgba(40,80,160,0.07) 0%, transparent 50%)', zIndex: 0 }} />
+
+      <div style={{ position: 'relative', zIndex: 1, width: '100%', maxWidth: 400 }}>
+        {/* Header */}
+        <div style={{ textAlign: 'center', marginBottom: 40 }}>
+          <div style={{ fontSize: 9, letterSpacing: '0.32em', color: '#5a6a4a', fontFamily: 'var(--font-mono)', textTransform: 'uppercase', marginBottom: 10 }}>THAA General Surgery Residency</div>
+          <h1 style={{ fontSize: 30, fontWeight: 300, color: 'var(--text)', fontFamily: 'var(--font-serif)', letterSpacing: '0.01em', marginBottom: 6 }}>Preference Log</h1>
+          <div style={{ fontSize: 12, color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', letterSpacing: '0.06em' }}>Resident access only</div>
+        </div>
+
+        {/* Card */}
+        <div style={{ background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 8, padding: 32, boxShadow: 'var(--shadow)' }}>
+          {!sent ? (
+            <>
+              <div style={{ fontSize: 14, color: 'var(--text)', fontFamily: 'var(--font-serif)', marginBottom: 6 }}>Sign in with magic link</div>
+              <div style={{ fontSize: 12, color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', marginBottom: 24, lineHeight: 1.6 }}>
+                Enter your email — we'll send a link that logs you in instantly. No password needed.
+              </div>
+
+              <div style={{ marginBottom: 16 }}>
+                <label style={S.label}>Email address</label>
+                <input
+                  type="email"
+                  value={email}
+                  onChange={e => { setEmail(e.target.value); setError(''); }}
+                  onKeyDown={e => e.key === 'Enter' && handleSend()}
+                  placeholder="you@example.com"
+                  autoFocus
+                  style={{ borderColor: error ? 'var(--red)' : undefined }}
+                />
+                {error && <div style={{ fontSize: 11, color: 'var(--red)', fontFamily: 'var(--font-mono)', marginTop: 6 }}>{error}</div>}
+              </div>
+
+              <button onClick={handleSend} disabled={loading} style={{ ...S.primaryBtn, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+                {loading ? <><Spinner /> Sending…</> : 'Send Magic Link'}
+              </button>
+
+              <div style={{ marginTop: 20, padding: '12px 14px', background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 4 }}>
+                <div style={{ fontSize: 11, color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', lineHeight: 1.7 }}>
+                  First time? Your account is created automatically when you first sign in. Contact your chief if you have trouble accessing the app.
+                </div>
+              </div>
+            </>
+          ) : (
+            <div style={{ textAlign: 'center' }}>
+              <div style={{ fontSize: 32, marginBottom: 16 }}>✉️</div>
+              <div style={{ fontSize: 16, color: 'var(--text)', fontFamily: 'var(--font-serif)', marginBottom: 8 }}>Check your email</div>
+              <div style={{ fontSize: 12, color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', lineHeight: 1.7, marginBottom: 24 }}>
+                We sent a magic link to <span style={{ color: 'var(--gold)' }}>{email}</span>.<br />
+                Click it to sign in — it expires in 1 hour.
+              </div>
+              <button onClick={() => { setSent(false); setEmail(''); }} style={{ ...S.secondaryBtn, fontSize: 11 }}>
+                Use a different email
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
