@@ -790,15 +790,6 @@ function AddNoteView({ attending, selectedProcedure, navTo, showFlash, loadData,
         </button>
       </div>
 
-      {/* Procedure detail panel */}
-      {selectedProc && (
-        <ProcedureDetailPanel
-          procedure={selectedProc}
-          attendings={attendings}
-          navTo={navTo}
-          onClose={() => setSelectedProc(null)}
-        />
-      )}
     </div>
   );
 }
@@ -1414,6 +1405,16 @@ function ProceduresView({ customProcedures, loadData, showFlash, allProcedures, 
           ))}
         </div>
       </div>
+
+      {/* Procedure detail panel */}
+      {selectedProc && (
+        <ProcedureDetailPanel
+          procedure={selectedProc}
+          attendings={attendings}
+          navTo={navTo}
+          onClose={() => setSelectedProc(null)}
+        />
+      )}
     </div>
   );
 }
