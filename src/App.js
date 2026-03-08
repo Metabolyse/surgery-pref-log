@@ -813,7 +813,7 @@ function ProcedureDetailPanel({ procedure, attendings, navTo, onClose }) {
   useEffect(() => {
     const load = async () => {
       setLoadingRes(true);
-      const { data } = await supabase.from('resources').select('*').eq('procedure', procedure).order('created_at');
+      const { data } = await supabase.from('resources').select('*').ilike('procedure', procedure.trim()).order('created_at');
       setResources(data || []);
       setLoadingRes(false);
     };
@@ -823,7 +823,7 @@ function ProcedureDetailPanel({ procedure, attendings, navTo, onClose }) {
   useEffect(() => {
     const load = async () => {
       setLoadingDeb(true);
-      const { data } = await supabase.from('debriefs').select('pearls, attending_id').eq('procedure', procedure).not('pearls', 'is', null).neq('pearls', '');
+      const { data } = await supabase.from('debriefs').select('pearls, attending_id').ilike('procedure', procedure.trim()).not('pearls', 'is', null).neq('pearls', '');
       setDebriefs(data || []);
       setLoadingDeb(false);
     };
@@ -831,8 +831,9 @@ function ProcedureDetailPanel({ procedure, attendings, navTo, onClose }) {
   }, [procedure]);
 
   // All attending prefs for this procedure, grouped by attending
+  const normalize = s => (s || '').trim().toLowerCase();
   const attendingsWithPrefs = attendings
-    .map(a => ({ ...a, prefs: (a.prefs || []).filter(p => p.procedure === procedure) }))
+    .map(a => ({ ...a, prefs: (a.prefs || []).filter(p => normalize(p.procedure) === normalize(procedure)) }))
     .filter(a => a.prefs.length > 0);
 
   const totalPrefs = attendingsWithPrefs.reduce((n, a) => n + a.prefs.length, 0);
