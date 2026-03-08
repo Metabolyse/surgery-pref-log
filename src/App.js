@@ -259,6 +259,7 @@ export default function App() {
     { key: 'serviceInfo', label: 'Service Info' },
     { key: 'phoneBook', label: 'Phone Book' },
     { key: 'debrief', label: 'Case Log' },
+    { key: 'prefCards', label: 'My Pref Cards' },
     { key: 'archive', label: 'Archive' },
   ];
 
@@ -302,7 +303,7 @@ export default function App() {
           {/* Tabs — always visible */}
           <div style={{ display: 'flex', gap: 0, overflowX: 'auto' }}>
             {TABS.map(t => (
-              <button key={t.key} onClick={() => setView(t.key)} style={{ background: 'none', border: 'none', borderBottom: (t.key === 'list' ? ['list','detail','addAttending','addNote'].includes(view) : t.key === 'debrief' ? ['debrief','addDebrief'].includes(view) : t.key === 'serviceInfo' ? view === 'serviceInfo' : view === t.key) ? '2px solid var(--gold)' : '2px solid transparent', color: (t.key === 'list' ? ['list','detail','addAttending','addNote'].includes(view) : t.key === 'debrief' ? ['debrief','addDebrief'].includes(view) : t.key === 'serviceInfo' ? view === 'serviceInfo' : view === t.key) ? 'var(--gold)' : 'var(--text-muted)', padding: '10px 16px', fontSize: 11, letterSpacing: '0.12em', textTransform: 'uppercase', marginBottom: -1, transition: 'all 0.15s', cursor: 'pointer', whiteSpace: 'nowrap' }}>
+              <button key={t.key} onClick={() => setView(t.key)} style={{ background: 'none', border: 'none', borderBottom: (t.key === 'list' ? ['list','detail','addAttending','addNote'].includes(view) : t.key === 'debrief' ? ['debrief','addDebrief'].includes(view) : t.key === 'prefCards' ? ['prefCards','editPrefCard'].includes(view) : t.key === 'serviceInfo' ? view === 'serviceInfo' : view === t.key) ? '2px solid var(--gold)' : '2px solid transparent', color: (t.key === 'list' ? ['list','detail','addAttending','addNote'].includes(view) : t.key === 'debrief' ? ['debrief','addDebrief'].includes(view) : t.key === 'prefCards' ? ['prefCards','editPrefCard'].includes(view) : t.key === 'serviceInfo' ? view === 'serviceInfo' : view === t.key) ? 'var(--gold)' : 'var(--text-muted)', padding: '10px 16px', fontSize: 11, letterSpacing: '0.12em', textTransform: 'uppercase', marginBottom: -1, transition: 'all 0.15s', cursor: 'pointer', whiteSpace: 'nowrap' }}>
                 {t.label}
               </button>
             ))}
@@ -324,6 +325,8 @@ export default function App() {
               {view === 'archive' && <ArchiveView showFlash={showFlash} loadData={loadData} requireAdmin={requireAdmin} />}
               {view === 'debrief' && <DebriefView attendings={attendings} allProcedures={allProcedures} navTo={navTo} showFlash={showFlash} userId={session.user.id} />}
               {view === 'addDebrief' && <AddDebriefView attending={selectedAttending} allProcedures={allProcedures} attendings={attendings} navTo={navTo} showFlash={showFlash} loadData={loadData} userId={session.user.id} />}
+              {view === 'prefCards' && <PrefCardsView allProcedures={allProcedures} navTo={navTo} showFlash={showFlash} userId={session.user.id} />}
+              {view === 'editPrefCard' && <EditPrefCardView procedure={selectedProcedure} navTo={navTo} showFlash={showFlash} userId={session.user.id} />}
               {view === 'serviceInfo' && <ServiceInfoView showFlash={showFlash} />}
               {view === 'phoneBook' && <PhoneBookView showFlash={showFlash} />}
             </>
@@ -2552,6 +2555,285 @@ function LoginView() {
             </div>
           )}
         </div>
+      </div>
+    </div>
+  );
+}
+
+
+// ── Pref Cards View ───────────────────────────────────────────────────────
+const PREF_CARD_SECTIONS = [
+  { key: 'positioning',      label: 'Patient Positioning',   placeholder: 'e.g. Supine, arms tucked, small bump under right shoulder. Bean bag. Table in 15° reverse Trendelenburg.' },
+  { key: 'prep_drape',       label: 'Prep & Drape',          placeholder: 'e.g. Chlorhexidine prep from nipples to mid-thigh. Ioban over umbilicus. Standard laparotomy drape.' },
+  { key: 'equipment',        label: 'Equipment & Tower',     placeholder: 'e.g. Stryker 1488 HD camera. AirSeal preferred for insufflation. Harmonic Ace+7. Have stapler on field.' },
+  { key: 'instruments',      label: 'Instrument Tray',       placeholder: 'e.g. Standard lap tray. Add: Kitner dissectors, right-angle clamp, clip applier (large + medium). No Maryland.' },
+  { key: 'energy_device',    label: 'Energy Device',         placeholder: 'e.g. Harmonic Ace+7 as primary dissector. Monopolar hook available but rarely used. LigaSure for vessels > 5mm.' },
+  { key: 'sutures',          label: 'Sutures & Closure',     placeholder: 'e.g. Fascia: 0-PDS figure-of-eight. Port sites > 5mm: 2-0 Vicryl on UR-6. Skin: 4-0 Monocryl subcuticular + Dermabond.' },
+  { key: 'special_requests', label: 'Special Requests',      placeholder: 'e.g. Foley only if case > 2hrs. OG tube after intubation. Forced-air warming blanket. 18g IV antecubital.' },
+];
+
+const ENTRUST_COLORS_MAP = { 'Limited Participation':'#8a4a3a','Direct Supervision':'#8a6a2a','Indirect Supervision':'#3a6a8a','Practice Ready':'#3a7a5a' };
+
+function PrefCardsView({ allProcedures, navTo, showFlash, userId }) {
+  const [cards, setCards] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [showPicker, setShowPicker] = useState(false);
+  const [pickerSearch, setPickerSearch] = useState('');
+
+  const loadCards = useCallback(async () => {
+    setLoading(true);
+    const { data } = await supabase.from('pref_cards').select('*').order('procedure');
+    setCards(data || []);
+    setLoading(false);
+  }, []);
+
+  useEffect(() => { loadCards(); }, [loadCards]);
+
+  const handleDelete = async (card) => {
+    if (!window.confirm(`Delete your pref card for ${card.procedure}?`)) return;
+    await supabase.from('pref_cards').delete().eq('id', card.id);
+    await loadCards();
+    showFlash('Pref card deleted', 'error');
+  };
+
+  const existingProcedures = new Set(cards.map(c => c.procedure));
+  const availableProcedures = allProcedures.filter(p => !existingProcedures.has(p));
+  const filteredAvailable = availableProcedures.filter(p => p.toLowerCase().includes(pickerSearch.toLowerCase()));
+
+  const sectionCount = (card) => PREF_CARD_SECTIONS.filter(s => card[s.key]?.trim()).length;
+
+  return (
+    <div className="fade-in">
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 6 }}>
+        <div>
+          <h2 style={S.sectionHead}>My Pref Cards</h2>
+          <p style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 20, fontStyle: 'italic' }}>
+            Your personal OR preference cards — private to your account.
+          </p>
+        </div>
+        <button onClick={() => setShowPicker(true)} style={{ ...S.secondaryBtn, flexShrink: 0, color: '#7aacca', borderColor: 'rgba(100,140,180,0.3)' }}>+ New Card</button>
+      </div>
+
+      {/* Procedure picker modal */}
+      {showPicker && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', zIndex: 500, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+          <div style={{ background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 8, padding: 24, width: '100%', maxWidth: 420, boxShadow: '0 8px 40px rgba(0,0,0,0.6)', maxHeight: '80vh', display: 'flex', flexDirection: 'column' }}>
+            <div style={{ fontSize: 15, color: 'var(--text)', fontFamily: 'var(--font-serif)', marginBottom: 4 }}>Choose a Procedure</div>
+            <div style={{ fontSize: 12, color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', marginBottom: 16 }}>Select the procedure to create a pref card for.</div>
+            <input value={pickerSearch} onChange={e => setPickerSearch(e.target.value)} placeholder="Search procedures..." autoFocus style={{ marginBottom: 12 }} />
+            <div style={{ overflowY: 'auto', flex: 1, display: 'flex', flexDirection: 'column', gap: 5 }}>
+              {filteredAvailable.length === 0 ? (
+                <div style={{ fontSize: 12, color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', textAlign: 'center', padding: '20px 0' }}>
+                  {availableProcedures.length === 0 ? 'You already have cards for all procedures.' : 'No procedures match.'}
+                </div>
+              ) : filteredAvailable.map(p => (
+                <button key={p} onClick={() => { setShowPicker(false); setPickerSearch(''); navTo('editPrefCard', null, p); }}
+                  style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 'var(--radius)', padding: '10px 14px', color: 'var(--text)', fontFamily: 'var(--font-serif)', fontSize: 14, textAlign: 'left', cursor: 'pointer', transition: 'border-color 0.15s' }}
+                  onMouseEnter={e => e.currentTarget.style.borderColor = 'rgba(200,168,64,0.35)'}
+                  onMouseLeave={e => e.currentTarget.style.borderColor = 'rgba(255,255,255,0.08)'}>
+                  {p}
+                </button>
+              ))}
+            </div>
+            <button onClick={() => { setShowPicker(false); setPickerSearch(''); }} style={{ ...S.secondaryBtn, marginTop: 14, fontSize: 11 }}>Cancel</button>
+          </div>
+        </div>
+      )}
+
+      {loading ? (
+        <div style={{ textAlign: 'center', padding: 40 }}><Spinner /></div>
+      ) : cards.length === 0 ? (
+        <div style={{ textAlign: 'center', padding: '50px 20px', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', fontSize: 12, border: '1px dashed rgba(255,255,255,0.07)', borderRadius: 6 }}>
+          No pref cards yet. Hit + New Card to create your first one.
+        </div>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {cards.map(card => (
+            <div key={card.id} style={{ ...S.card, display: 'flex', alignItems: 'center', gap: 14 }}>
+              <div style={{ flex: 1, cursor: 'pointer' }} onClick={() => navTo('editPrefCard', null, card.procedure)}>
+                <div style={{ fontSize: 16, color: 'var(--text)', fontFamily: 'var(--font-serif)', marginBottom: 3 }}>{card.procedure}</div>
+                <div style={{ fontSize: 11, color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>
+                  {sectionCount(card)} of {PREF_CARD_SECTIONS.length} sections filled
+                  {card.updated_at && <span style={{ marginLeft: 10, color: '#3a4a3a' }}>· updated {new Date(card.updated_at).toLocaleDateString()}</span>}
+                </div>
+              </div>
+              <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
+                <button onClick={() => navTo('editPrefCard', null, card.procedure)} style={{ ...S.secondaryBtn, fontSize: 10, padding: '7px 12px' }}>Edit</button>
+                <button onClick={() => handleDelete(card)} style={{ background: 'none', border: 'none', color: '#3a3a3a', fontSize: 16, padding: '0 4px', cursor: 'pointer', transition: 'color 0.15s' }}
+                  onMouseEnter={e => e.currentTarget.style.color = '#8a4a3a'}
+                  onMouseLeave={e => e.currentTarget.style.color = '#3a3a3a'}>×</button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Edit / View Pref Card ─────────────────────────────────────────────────
+function EditPrefCardView({ procedure, navTo, showFlash, userId }) {
+  const [card, setCard] = useState(null);
+  const [form, setForm] = useState({});
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [mode, setMode] = useState('view'); // 'view' | 'edit' | 'print'
+  const [dirty, setDirty] = useState(false);
+
+  useEffect(() => {
+    const load = async () => {
+      setLoading(true);
+      const { data } = await supabase.from('pref_cards').select('*').eq('procedure', procedure).maybeSingle();
+      if (data) {
+        setCard(data);
+        const f = {};
+        PREF_CARD_SECTIONS.forEach(s => { f[s.key] = data[s.key] || ''; });
+        setForm(f);
+        setMode('view');
+      } else {
+        // New card — go straight to edit
+        const f = {};
+        PREF_CARD_SECTIONS.forEach(s => { f[s.key] = ''; });
+        setForm(f);
+        setMode('edit');
+      }
+      setLoading(false);
+    };
+    load();
+  }, [procedure]);
+
+  const handleSave = async () => {
+    setSaving(true);
+    const payload = { ...form, procedure, user_id: userId, updated_at: new Date().toISOString() };
+    const { data, error } = await supabase.from('pref_cards').upsert([payload], { onConflict: 'user_id,procedure' }).select().single();
+    setSaving(false);
+    if (error) { showFlash('Error saving pref card', 'error'); return; }
+    setCard(data);
+    setDirty(false);
+    setMode('view');
+    showFlash('Pref card saved');
+  };
+
+  const updateField = (key, val) => { setForm(f => ({ ...f, [key]: val })); setDirty(true); };
+
+  if (loading) return <div style={{ textAlign: 'center', padding: '60px 0' }}><Spinner /></div>;
+
+  // ── Print mode ──
+  if (mode === 'print') {
+    return (
+      <div className="fade-in">
+        <div style={{ display: 'flex', gap: 8, marginBottom: 20 }}>
+          <button onClick={() => setMode('view')} style={S.backBtn}>← Back</button>
+          <button onClick={() => window.print()} style={{ ...S.secondaryBtn, fontSize: 10, marginLeft: 8 }}>🖨 Print</button>
+        </div>
+        <div id="print-card" style={{ background: '#fff', color: '#111', borderRadius: 6, padding: '28px 32px', border: '1px solid #ddd', fontFamily: 'Georgia, serif' }}>
+          <div style={{ borderBottom: '2px solid #111', paddingBottom: 12, marginBottom: 20 }}>
+            <div style={{ fontSize: 10, letterSpacing: '0.2em', color: '#666', fontFamily: 'monospace', textTransform: 'uppercase', marginBottom: 4 }}>OR Preference Card</div>
+            <div style={{ fontSize: 24, fontWeight: 700, color: '#111' }}>{procedure}</div>
+            <div style={{ fontSize: 11, color: '#666', fontFamily: 'monospace', marginTop: 4 }}>Printed {new Date().toLocaleDateString()}</div>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px 24px' }}>
+            {PREF_CARD_SECTIONS.map(s => form[s.key]?.trim() ? (
+              <div key={s.key} style={{ breakInside: 'avoid' }}>
+                <div style={{ fontSize: 9, letterSpacing: '0.18em', color: '#888', fontFamily: 'monospace', textTransform: 'uppercase', marginBottom: 4, borderBottom: '1px solid #eee', paddingBottom: 3 }}>{s.label}</div>
+                <div style={{ fontSize: 13, color: '#222', lineHeight: 1.6, whiteSpace: 'pre-wrap' }}>{form[s.key]}</div>
+              </div>
+            ) : null)}
+          </div>
+          {PREF_CARD_SECTIONS.every(s => !form[s.key]?.trim()) && (
+            <div style={{ fontSize: 13, color: '#999', fontStyle: 'italic', textAlign: 'center', padding: '20px 0' }}>No sections filled in.</div>
+          )}
+        </div>
+        <style>{`@media print { body > *:not(#print-card) { display: none; } #print-card { border: none; padding: 0; } }`}</style>
+      </div>
+    );
+  }
+
+  // ── View mode ──
+  if (mode === 'view') {
+    const filledSections = PREF_CARD_SECTIONS.filter(s => form[s.key]?.trim());
+    return (
+      <div className="fade-in">
+        <button onClick={() => navTo('prefCards')} style={S.backBtn}>← My Pref Cards</button>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 20 }}>
+          <div>
+            <h2 style={{ ...S.sectionHead, fontSize: 24 }}>{procedure}</h2>
+            <div style={{ fontSize: 11, color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>
+              {filledSections.length} of {PREF_CARD_SECTIONS.length} sections · updated {card?.updated_at ? new Date(card.updated_at).toLocaleDateString() : 'never'}
+            </div>
+          </div>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button onClick={() => setMode('print')} style={{ ...S.secondaryBtn, fontSize: 10 }}>🖨 Print View</button>
+            <button onClick={() => setMode('edit')} style={{ ...S.primaryBtn, width: 'auto', padding: '9px 18px', fontSize: 10 }}>Edit</button>
+          </div>
+        </div>
+
+        {filledSections.length === 0 ? (
+          <div style={{ textAlign: 'center', padding: '40px 20px', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', fontSize: 12, border: '1px dashed rgba(255,255,255,0.07)', borderRadius: 6 }}>
+            No sections filled in yet. Hit Edit to start building this pref card.
+          </div>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            {filledSections.map(s => (
+              <div key={s.key} style={{ ...S.card }}>
+                <div style={S.divider}>{s.label}</div>
+                <div style={{ fontSize: 14, color: '#d8d0b8', lineHeight: 1.7, fontFamily: 'var(--font-serif)', whiteSpace: 'pre-wrap' }}>{form[s.key]}</div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Empty sections shown as dim placeholders */}
+        {PREF_CARD_SECTIONS.filter(s => !form[s.key]?.trim()).length > 0 && filledSections.length > 0 && (
+          <div style={{ marginTop: 16 }}>
+            <div style={{ fontSize: 11, color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', marginBottom: 8, letterSpacing: '0.06em' }}>UNFILLED SECTIONS</div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+              {PREF_CARD_SECTIONS.filter(s => !form[s.key]?.trim()).map(s => (
+                <button key={s.key} onClick={() => setMode('edit')} style={{ ...S.tag, fontSize: 10, color: '#3a4a4a' }}>{s.label}</button>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // ── Edit mode ──
+  return (
+    <div className="fade-in">
+      <button onClick={() => { if (dirty) { if (!window.confirm('Discard unsaved changes?')) return; } setDirty(false); card ? setMode('view') : navTo('prefCards'); }} style={S.backBtn}>
+        ← {card ? 'Cancel' : 'My Pref Cards'}
+      </button>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 20 }}>
+        <div>
+          <h2 style={{ ...S.sectionHead, fontSize: 24 }}>{procedure}</h2>
+          <div style={{ fontSize: 12, color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>Fill in as many or as few sections as you need.</div>
+        </div>
+        <button onClick={handleSave} disabled={saving} style={{ ...S.primaryBtn, width: 'auto', padding: '9px 20px', fontSize: 10, display: 'flex', alignItems: 'center', gap: 6 }}>
+          {saving ? <><Spinner /> Saving…</> : 'Save Card'}
+        </button>
+      </div>
+
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+        {PREF_CARD_SECTIONS.map(s => (
+          <div key={s.key} style={{ ...S.card, background: form[s.key]?.trim() ? 'var(--bg2)' : 'rgba(255,255,255,0.015)', borderColor: form[s.key]?.trim() ? 'var(--border)' : 'rgba(255,255,255,0.05)' }}>
+            <div style={{ ...S.divider, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span>{s.label}</span>
+              {form[s.key]?.trim() && <span style={{ fontSize: 9, color: '#4a7a5a', fontFamily: 'var(--font-mono)', letterSpacing: '0.1em' }}>✓ FILLED</span>}
+            </div>
+            <textarea
+              value={form[s.key]}
+              onChange={e => updateField(s.key, e.target.value)}
+              placeholder={s.placeholder}
+              rows={3}
+              style={{ fontSize: 13 }}
+            />
+          </div>
+        ))}
+
+        <button onClick={handleSave} disabled={saving} style={{ ...S.primaryBtn, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+          {saving ? <><Spinner /> Saving…</> : 'Save Pref Card'}
+        </button>
       </div>
     </div>
   );
