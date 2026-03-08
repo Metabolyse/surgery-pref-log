@@ -794,12 +794,28 @@ function AddNoteView({ attending, selectedProcedure, navTo, showFlash, loadData,
   );
 }
 
-// ── Procedure Detail Panel ─────────────────────────────────────────────────
+// ── Procedure Detail Panel (slide-in drawer) ──────────────────────────────
 function ProcedureDetailPanel({ procedure, attendings, navTo, onClose }) {
   const [resources, setResources] = useState([]);
   const [debriefs, setDebriefs] = useState([]);
   const [loadingRes, setLoadingRes] = useState(true);
   const [loadingDeb, setLoadingDeb] = useState(true);
+  const [visible, setVisible] = useState(false);
+
+  // Trigger entrance animation after mount
+  useEffect(() => { requestAnimationFrame(() => setVisible(true)); }, []);
+
+  const handleClose = () => {
+    setVisible(false);
+    setTimeout(onClose, 280);
+  };
+
+  // Close on Escape key
+  useEffect(() => {
+    const handler = e => { if (e.key === 'Escape') handleClose(); };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, []);
 
   useEffect(() => {
     const load = async () => {
@@ -821,97 +837,121 @@ function ProcedureDetailPanel({ procedure, attendings, navTo, onClose }) {
     load();
   }, [procedure]);
 
-  // All attending prefs for this procedure, grouped by attending
   const normalize = s => (s || '').trim().toLowerCase();
   const attendingsWithPrefs = attendings
     .map(a => ({ ...a, prefs: (a.prefs || []).filter(p => normalize(p.procedure) === normalize(procedure)) }))
     .filter(a => a.prefs.length > 0);
-
   const totalPrefs = attendingsWithPrefs.reduce((n, a) => n + a.prefs.length, 0);
 
   return (
-    <div style={{ marginTop: 32, borderTop: '2px solid var(--border)', paddingTop: 24 }} className="fade-in">
-      {/* Header */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 20 }}>
-        <div>
-          <div style={{ fontSize: 10, letterSpacing: '0.2em', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', textTransform: 'uppercase', marginBottom: 4 }}>Procedure Overview</div>
-          <h3 style={{ ...S.sectionHead, fontSize: 22 }}>{procedure}</h3>
-          <div style={{ fontSize: 11, color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', marginTop: 3 }}>
-            {totalPrefs} preference {totalPrefs === 1 ? 'note' : 'notes'} across {attendingsWithPrefs.length} {attendingsWithPrefs.length === 1 ? 'attending' : 'attendings'}
-            {resources.length > 0 && ` · ${resources.length} ${resources.length === 1 ? 'resource' : 'resources'}`}
-            {debriefs.length > 0 && ` · ${debriefs.length} shared ${debriefs.length === 1 ? 'pearl' : 'pearls'}`}
+    <>
+      {/* Backdrop */}
+      <div onClick={handleClose} style={{
+        position: 'fixed', inset: 0, zIndex: 400,
+        background: 'rgba(0,0,0,0.45)',
+        opacity: visible ? 1 : 0,
+        transition: 'opacity 0.28s ease',
+      }} />
+
+      {/* Drawer */}
+      <div style={{
+        position: 'fixed', top: 0, right: 0, bottom: 0, zIndex: 401,
+        width: 'min(520px, 95vw)',
+        background: '#0f1520',
+        borderLeft: '1px solid rgba(200,168,64,0.2)',
+        boxShadow: '-8px 0 40px rgba(0,0,0,0.6)',
+        display: 'flex', flexDirection: 'column',
+        transform: visible ? 'translateX(0)' : 'translateX(100%)',
+        transition: 'transform 0.28s cubic-bezier(0.32, 0.72, 0, 1)',
+      }}>
+        {/* Drawer header */}
+        <div style={{ padding: '20px 24px 16px', borderBottom: '1px solid var(--border)', flexShrink: 0 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+            <div>
+              <div style={{ fontSize: 10, letterSpacing: '0.22em', color: 'var(--gold)', fontFamily: 'var(--font-mono)', textTransform: 'uppercase', marginBottom: 5, opacity: 0.7 }}>Procedure Overview</div>
+              <h3 style={{ fontSize: 20, fontWeight: 300, color: 'var(--text)', fontFamily: 'var(--font-serif)', letterSpacing: '0.02em', margin: 0 }}>{procedure}</h3>
+              <div style={{ fontSize: 11, color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', marginTop: 5 }}>
+                {totalPrefs} pref {totalPrefs === 1 ? 'note' : 'notes'} · {attendingsWithPrefs.length} {attendingsWithPrefs.length === 1 ? 'attending' : 'attendings'}
+                {resources.length > 0 && ` · ${resources.length} ${resources.length === 1 ? 'resource' : 'resources'}`}
+                {debriefs.length > 0 && ` · ${debriefs.length} ${debriefs.length === 1 ? 'pearl' : 'pearls'}`}
+              </div>
+            </div>
+            <button onClick={handleClose} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', fontSize: 22, lineHeight: 1, cursor: 'pointer', padding: '0 4px', marginTop: -2, transition: 'color 0.15s' }}
+              onMouseEnter={e => e.currentTarget.style.color = 'var(--text)'}
+              onMouseLeave={e => e.currentTarget.style.color = 'var(--text-muted)'}>×</button>
           </div>
         </div>
-        <button onClick={onClose} style={{ ...S.ghostBtn, fontSize: 18, lineHeight: 1, color: 'var(--text-muted)', padding: '0 4px' }}>×</button>
-      </div>
 
-      {/* Attending prefs */}
-      {attendingsWithPrefs.length === 0 ? (
-        <div style={{ padding: '20px', background: 'rgba(255,255,255,0.02)', border: '1px dashed rgba(255,255,255,0.07)', borderRadius: 'var(--radius)', fontSize: 12, color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', textAlign: 'center', marginBottom: 16 }}>
-          No preference notes logged for this procedure yet.
-        </div>
-      ) : (
-        <div style={{ marginBottom: 20 }}>
-          {attendingsWithPrefs.map(a => (
-            <div key={a.id} style={{ marginBottom: 16 }}>
-              <div style={{ ...S.divider, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span>Dr. {a.name}{a.nickname ? ` — "${a.nickname}"` : ''}</span>
-                <button onClick={() => navTo('detail', a, procedure)}
-                  style={{ ...S.ghostBtn, fontSize: 10, color: '#4a8a9a', letterSpacing: '0.08em' }}>
-                  View full profile →
-                </button>
-              </div>
+        {/* Scrollable content */}
+        <div style={{ flex: 1, overflowY: 'auto', padding: '20px 24px 32px' }}>
+
+          {/* Attending prefs */}
+          {attendingsWithPrefs.length === 0 ? (
+            <div style={{ padding: '24px 16px', background: 'rgba(255,255,255,0.02)', border: '1px dashed rgba(255,255,255,0.07)', borderRadius: 'var(--radius)', fontSize: 12, color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', textAlign: 'center', marginBottom: 16 }}>
+              No preference notes logged for this procedure yet.
+            </div>
+          ) : (
+            <div style={{ marginBottom: 20 }}>
+              {attendingsWithPrefs.map(a => (
+                <div key={a.id} style={{ marginBottom: 18 }}>
+                  <div style={{ ...S.divider, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span>Dr. {a.name}{a.nickname ? ` — "${a.nickname}"` : ''}</span>
+                    <button onClick={() => { handleClose(); setTimeout(() => navTo('detail', a, procedure), 300); }}
+                      style={{ ...S.ghostBtn, fontSize: 10, color: '#4a8a9a', letterSpacing: '0.08em' }}>
+                      Full profile →
+                    </button>
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                    {a.prefs.map(pref => (
+                      <div key={pref.id} style={{ padding: '10px 14px', background: pref.critical ? 'var(--red-dim)' : 'rgba(255,255,255,0.02)', border: `1px solid ${pref.critical ? 'rgba(192,80,58,0.28)' : 'rgba(255,255,255,0.06)'}`, borderRadius: 'var(--radius)', display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+                        {pref.critical && <span style={{ color: 'var(--red)', fontSize: 11, flexShrink: 0, marginTop: 2 }}>⚠</span>}
+                        <div style={{ flex: 1 }}>
+                          <div style={{ fontSize: 13.5, color: '#d0c8b0', lineHeight: 1.65, fontFamily: 'var(--font-serif)' }}>{pref.note}</div>
+                          <div style={{ fontSize: 10, color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', marginTop: 4 }}>{pref.category}</div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Shared pearls */}
+          {!loadingDeb && debriefs.length > 0 && (
+            <div style={{ marginBottom: 20 }}>
+              <div style={{ ...S.divider, color: '#9a8a4a' }}>★ Shared Pearls</div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                {a.prefs.map(pref => (
-                  <div key={pref.id} style={{ padding: '10px 14px', background: pref.critical ? 'var(--red-dim)' : 'rgba(255,255,255,0.02)', border: `1px solid ${pref.critical ? 'rgba(192,80,58,0.28)' : 'rgba(255,255,255,0.06)'}`, borderRadius: 'var(--radius)', display: 'flex', gap: 10, alignItems: 'flex-start' }}>
-                    {pref.critical && <span style={{ color: 'var(--red)', fontSize: 11, flexShrink: 0, marginTop: 2 }}>⚠</span>}
-                    <div style={{ flex: 1 }}>
-                      <div style={{ fontSize: 13.5, color: '#d0c8b0', lineHeight: 1.65, fontFamily: 'var(--font-serif)' }}>{pref.note}</div>
-                      <div style={{ fontSize: 10, color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', marginTop: 4 }}>{pref.category}</div>
+                {debriefs.map((d, i) => {
+                  const att = attendings.find(a => a.id === d.attending_id);
+                  return (
+                    <div key={i} style={{ padding: '10px 14px', background: 'rgba(180,140,40,0.05)', border: '1px solid rgba(180,140,40,0.18)', borderRadius: 'var(--radius)' }}>
+                      <div style={{ fontSize: 13, color: '#c8b870', lineHeight: 1.65, fontFamily: 'var(--font-serif)', whiteSpace: 'pre-wrap' }}>{d.pearls}</div>
+                      {att && <div style={{ fontSize: 10, color: '#7a6a3a', fontFamily: 'var(--font-mono)', marginTop: 4 }}>w/ Dr. {att.name}</div>}
                     </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* Resources */}
+          {!loadingRes && resources.length > 0 && (
+            <div>
+              <div style={S.divider}>Resources</div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                {resources.map(r => (
+                  <div key={r.id} style={{ padding: '10px 14px', background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 'var(--radius)' }}>
+                    <a href={r.url} target="_blank" rel="noopener noreferrer" style={{ fontSize: 13, color: '#7aacca', fontFamily: 'var(--font-serif)', textDecoration: 'none' }}>{r.title}</a>
+                    <div style={{ fontSize: 10, color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', marginTop: 3 }}>{r.category}{r.notes ? ` · ${r.notes}` : ''}</div>
                   </div>
                 ))}
               </div>
             </div>
-          ))}
+          )}
         </div>
-      )}
-
-      {/* Shared pearls from case logs */}
-      {!loadingDeb && debriefs.length > 0 && (
-        <div style={{ marginBottom: 20 }}>
-          <div style={{ ...S.divider, color: '#9a8a4a' }}>★ Shared Pearls from Case Logs</div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-            {debriefs.map((d, i) => {
-              const att = attendings.find(a => a.id === d.attending_id);
-              return (
-                <div key={i} style={{ padding: '10px 14px', background: 'rgba(180,140,40,0.05)', border: '1px solid rgba(180,140,40,0.18)', borderRadius: 'var(--radius)' }}>
-                  <div style={{ fontSize: 13, color: '#c8b870', lineHeight: 1.65, fontFamily: 'var(--font-serif)', whiteSpace: 'pre-wrap' }}>{d.pearls}</div>
-                  {att && <div style={{ fontSize: 10, color: '#7a6a3a', fontFamily: 'var(--font-mono)', marginTop: 4 }}>w/ Dr. {att.name}</div>}
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
-
-      {/* Resources */}
-      {!loadingRes && resources.length > 0 && (
-        <div style={{ marginBottom: 8 }}>
-          <div style={S.divider}>Resources</div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-            {resources.map(r => (
-              <div key={r.id} style={{ padding: '10px 14px', background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 'var(--radius)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
-                <div>
-                  <a href={r.url} target="_blank" rel="noopener noreferrer" style={{ fontSize: 13, color: '#7aacca', fontFamily: 'var(--font-serif)', textDecoration: 'none' }}>{r.title}</a>
-                  <div style={{ fontSize: 10, color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', marginTop: 3 }}>{r.category}{r.notes ? ` · ${r.notes}` : ''}</div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-    </div>
+      </div>
+    </>
   );
 }
 
