@@ -98,6 +98,7 @@ export default function App() {
   const [customProcedures, setCustomProcedures] = useState([]);
   const [customSpecialties, setCustomSpecialties] = useState([]);
   const [customPrefCategories, setCustomPrefCategories] = useState([]);
+  const [hiddenDefaultProcedures, setHiddenDefaultProcedures] = useState([]);
   const [selectedAttending, setSelectedAttending] = useState(null);
   const [selectedProcedure, setSelectedProcedure] = useState(null);
   const [search, setSearch] = useState('');
@@ -119,8 +120,7 @@ export default function App() {
     if (pendingAdminAction) { pendingAdminAction(); setPendingAdminAction(null); }
   };
 
-  const hiddenDefaults = customProcedures.filter(p => p.name.startsWith('__HIDDEN__')).map(p => p.name.replace('__HIDDEN__', ''));
-  const allProcedures = [...new Set([...DEFAULT_PROCEDURES.filter(p => !hiddenDefaults.includes(p)), ...customProcedures.filter(p => !p.name.startsWith('__HIDDEN__')).map(p => p.name)])].sort();
+  const allProcedures = [...new Set([...DEFAULT_PROCEDURES.filter(p => !hiddenDefaultProcedures.includes(p)), ...customProcedures.map(p => p.name)])].sort();
   const allSpecialties = [...new Set([...DEFAULT_SPECIALTIES, ...customSpecialties.map(s => s.name)])].sort();
   const allPrefCategories = [...new Set([...DEFAULT_PREF_CATEGORIES, ...customPrefCategories.map(c => c.name)])];
 
@@ -133,12 +133,13 @@ export default function App() {
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
-      const [{ data: att }, { data: prefs }, { data: cp }, { data: cs }, { data: cpc }] = await Promise.all([
+      const [{ data: att }, { data: prefs }, { data: cp }, { data: cs }, { data: cpc }, { data: hdp }] = await Promise.all([
         supabase.from('attendings').select('*').order('name'),
         supabase.from('preferences').select('*').order('created_at'),
         supabase.from('custom_procedures').select('*').order('name'),
         supabase.from('custom_specialties').select('*').order('name'),
         supabase.from('custom_pref_categories').select('*').order('name'),
+        supabase.from('hidden_default_procedures').select('name'),
       ]);
       const attendingsWithPrefs = (att || []).map(a => ({
         ...a,
@@ -148,6 +149,7 @@ export default function App() {
       setCustomProcedures(cp || []);
       setCustomSpecialties(cs || []);
       setCustomPrefCategories(cpc || []);
+      setHiddenDefaultProcedures((hdp || []).map(r => r.name));
     } catch (e) {
       showFlash('Error loading data', 'error');
     }
@@ -181,13 +183,33 @@ export default function App() {
   // ── Export / Import ──
   const handleExport = async () => {
     try {
-      const [{ data: att }, { data: prefs }, { data: cp }, { data: res }] = await Promise.all([
+      const [
+        { data: att }, { data: prefs }, { data: cp }, { data: res },
+        { data: cs }, { data: cpc }, { data: hdp }, { data: svc },
+        { data: si }, { data: pb }, { data: scats }
+      ] = await Promise.all([
         supabase.from('attendings').select('*'),
         supabase.from('preferences').select('*'),
         supabase.from('custom_procedures').select('*'),
         supabase.from('resources').select('*'),
+        supabase.from('custom_specialties').select('*'),
+        supabase.from('custom_pref_categories').select('*'),
+        supabase.from('hidden_default_procedures').select('*'),
+        supabase.from('services').select('*'),
+        supabase.from('service_info').select('*'),
+        supabase.from('phone_book').select('*'),
+        supabase.from('custom_service_categories').select('*'),
+        supabase.from('debriefs').select('*'),
       ]);
-      const blob = new Blob([JSON.stringify({ attendings: att, preferences: prefs, custom_procedures: cp, resources: res, exported_at: new Date().toISOString() }, null, 2)], { type: 'application/json' });
+      const exportData = {
+        attendings: att, preferences: prefs, custom_procedures: cp, resources: res,
+        custom_specialties: cs, custom_pref_categories: cpc,
+        hidden_default_procedures: hdp, services: svc,
+        service_info: si, phone_book: pb, custom_service_categories: scats,
+        exported_at: new Date().toISOString(),
+        version: 2,
+      };
+      const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a'); a.href = url; a.download = `surgery-pref-log-${new Date().toISOString().slice(0,10)}.json`; a.click();
       URL.revokeObjectURL(url);
@@ -200,10 +222,19 @@ export default function App() {
     try {
       const text = await file.text();
       const data = JSON.parse(text);
-      if (data.attendings) await supabase.from('attendings').upsert(data.attendings);
-      if (data.preferences) await supabase.from('preferences').upsert(data.preferences);
-      if (data.custom_procedures) await supabase.from('custom_procedures').upsert(data.custom_procedures);
-      if (data.resources) await supabase.from('resources').upsert(data.resources);
+      const upserts = [];
+      if (data.attendings) upserts.push(supabase.from('attendings').upsert(data.attendings));
+      if (data.preferences) upserts.push(supabase.from('preferences').upsert(data.preferences));
+      if (data.custom_procedures) upserts.push(supabase.from('custom_procedures').upsert(data.custom_procedures));
+      if (data.resources) upserts.push(supabase.from('resources').upsert(data.resources));
+      if (data.custom_specialties) upserts.push(supabase.from('custom_specialties').upsert(data.custom_specialties));
+      if (data.custom_pref_categories) upserts.push(supabase.from('custom_pref_categories').upsert(data.custom_pref_categories));
+      if (data.hidden_default_procedures) upserts.push(supabase.from('hidden_default_procedures').upsert(data.hidden_default_procedures));
+      if (data.services) upserts.push(supabase.from('services').upsert(data.services));
+      if (data.service_info) upserts.push(supabase.from('service_info').upsert(data.service_info));
+      if (data.phone_book) upserts.push(supabase.from('phone_book').upsert(data.phone_book));
+      if (data.custom_service_categories) upserts.push(supabase.from('custom_service_categories').upsert(data.custom_service_categories));
+      await Promise.all(upserts);
       await loadData();
       showFlash('Data imported successfully');
     } catch (e) { showFlash('Import failed — check file format', 'error'); }
@@ -217,6 +248,7 @@ export default function App() {
     { key: 'procedures', label: 'Procedures' },
     { key: 'serviceInfo', label: 'Service Info' },
     { key: 'phoneBook', label: 'Phone Book' },
+    { key: 'debrief', label: 'Case Log' },
     { key: 'archive', label: 'Archive' },
   ];
 
@@ -237,6 +269,7 @@ export default function App() {
               <h1 style={{ fontSize: 28, fontWeight: 300, color: 'var(--text)', letterSpacing: '0.02em', fontFamily: 'var(--font-serif)' }}>Attending Preference Log</h1>
             </div>
             <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+              <button onClick={() => navTo('addDebrief', null, null)} style={{ ...S.secondaryBtn, fontSize: 10, borderColor: 'rgba(100,140,180,0.3)', color: '#7aacca' }}>+ Case Debrief</button>
               <button onClick={handleExport} style={{ ...S.secondaryBtn, fontSize: 10 }}>↓ Export</button>
               <label style={{ ...S.secondaryBtn, display: 'inline-block', fontSize: 10 }}>
                 ↑ Import
@@ -251,7 +284,7 @@ export default function App() {
           {/* Tabs — always visible */}
           <div style={{ display: 'flex', gap: 0, overflowX: 'auto' }}>
             {TABS.map(t => (
-              <button key={t.key} onClick={() => setView(t.key)} style={{ background: 'none', border: 'none', borderBottom: (t.key === 'list' ? ['list','detail','addAttending','addNote'].includes(view) : t.key === 'serviceInfo' ? view === 'serviceInfo' : view === t.key) ? '2px solid var(--gold)' : '2px solid transparent', color: (t.key === 'list' ? ['list','detail','addAttending','addNote'].includes(view) : t.key === 'serviceInfo' ? view === 'serviceInfo' : view === t.key) ? 'var(--gold)' : 'var(--text-muted)', padding: '10px 16px', fontSize: 11, letterSpacing: '0.12em', textTransform: 'uppercase', marginBottom: -1, transition: 'all 0.15s', cursor: 'pointer', whiteSpace: 'nowrap' }}>
+              <button key={t.key} onClick={() => setView(t.key)} style={{ background: 'none', border: 'none', borderBottom: (t.key === 'list' ? ['list','detail','addAttending','addNote'].includes(view) : t.key === 'debrief' ? ['debrief','addDebrief'].includes(view) : t.key === 'serviceInfo' ? view === 'serviceInfo' : view === t.key) ? '2px solid var(--gold)' : '2px solid transparent', color: (t.key === 'list' ? ['list','detail','addAttending','addNote'].includes(view) : t.key === 'debrief' ? ['debrief','addDebrief'].includes(view) : t.key === 'serviceInfo' ? view === 'serviceInfo' : view === t.key) ? 'var(--gold)' : 'var(--text-muted)', padding: '10px 16px', fontSize: 11, letterSpacing: '0.12em', textTransform: 'uppercase', marginBottom: -1, transition: 'all 0.15s', cursor: 'pointer', whiteSpace: 'nowrap' }}>
                 {t.label}
               </button>
             ))}
@@ -271,6 +304,8 @@ export default function App() {
               {view === 'opNote' && <OpNoteView allProcedures={allProcedures} attendings={attendings} getPrefsForProcedure={getPrefsForProcedure} />}
               {view === 'procedures' && <ProceduresView customProcedures={customProcedures} loadData={loadData} showFlash={showFlash} allProcedures={allProcedures} attendings={attendings} />}
               {view === 'archive' && <ArchiveView showFlash={showFlash} loadData={loadData} requireAdmin={requireAdmin} />}
+              {view === 'debrief' && <DebriefView attendings={attendings} allProcedures={allProcedures} navTo={navTo} showFlash={showFlash} />}
+              {view === 'addDebrief' && <AddDebriefView attending={selectedAttending} allProcedures={allProcedures} attendings={attendings} navTo={navTo} showFlash={showFlash} loadData={loadData} />}
               {view === 'serviceInfo' && <ServiceInfoView showFlash={showFlash} />}
               {view === 'phoneBook' && <PhoneBookView showFlash={showFlash} />}
             </>
@@ -648,6 +683,9 @@ function DetailView({ attending, selectedProcedure, setSelectedProcedure, navTo,
       <div style={{ marginTop: 16 }}>
         <button onClick={() => navTo('addNote', attending, selectedProcedure || null)} style={S.primaryBtn}>+ Log Preference</button>
       </div>
+
+      {/* Case Log inline */}
+      <AttendingDebriefInline attending={attending} selectedProcedure={selectedProcedure} navTo={navTo} />
     </div>
   );
 }
@@ -1021,30 +1059,16 @@ function ProceduresView({ customProcedures, loadData, showFlash, allProcedures, 
     showFlash('Procedure removed', 'error');
   };
 
-  // For default procedures, we track deletions in a separate DB table so they
-  // stay hidden across all sessions. We also clean up any linked prefs/resources.
-  const [hiddenDefaults, setHiddenDefaults] = useState([]);
-
-  useEffect(() => {
-    const loadHidden = async () => {
-      const { data } = await supabase.from('custom_procedures').select('name').like('name', '__HIDDEN__%');
-      setHiddenDefaults((data || []).map(d => d.name.replace('__HIDDEN__', '')));
-    };
-    loadHidden();
-  }, [customProcedures]);
-
   const handleDeleteDefault = async (procName) => {
     if (!window.confirm(`Remove "${procName}" from the procedure list? Any linked preference notes and resources will also be deleted.`)) return;
-    // Mark as hidden by inserting a sentinel record
-    await supabase.from('custom_procedures').insert([{ name: `__HIDDEN__${procName}` }]);
-    // Clean up linked data
+    await supabase.from('hidden_default_procedures').insert([{ name: procName }]);
     await supabase.from('preferences').delete().eq('procedure', procName);
     await supabase.from('resources').delete().eq('procedure', procName);
     await loadData();
     showFlash(`"${procName}" removed`, 'error');
   };
 
-  const visibleDefaults = DEFAULT_PROCEDURES.filter(p => !hiddenDefaults.includes(p));
+  const visibleDefaults = DEFAULT_PROCEDURES.filter(p => allProcedures.includes(p));
 
   const openEdit = (procName, isDefault) => {
     setEditTarget({ name: procName, isDefault });
@@ -1978,6 +2002,421 @@ function PhoneBookView({ showFlash }) {
             </div>
           </div>
         ))
+      )}
+    </div>
+  );
+}
+
+
+// ── Star Rating component ──────────────────────────────────────────────────
+function StarRating({ value, onChange, color = 'var(--gold)' }) {
+  const [hover, setHover] = useState(0);
+  return (
+    <div style={{ display: 'flex', gap: 4 }}>
+      {[1,2,3,4,5].map(n => (
+        <button key={n}
+          onClick={() => onChange(n)}
+          onMouseEnter={() => setHover(n)}
+          onMouseLeave={() => setHover(0)}
+          style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontSize: 22, lineHeight: 1, color: n <= (hover || value) ? color : 'rgba(255,255,255,0.1)', transition: 'color 0.1s' }}>
+          ★
+        </button>
+      ))}
+    </div>
+  );
+}
+
+// ── Attending Debrief Inline (shown on detail page) ───────────────────────
+function AttendingDebriefInline({ attending, selectedProcedure, navTo }) {
+  const [debriefs, setDebriefs] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [expanded, setExpanded] = useState(null);
+
+  useEffect(() => {
+    const load = async () => {
+      setLoading(true);
+      let q = supabase.from('debriefs').select('*').eq('attending_id', attending.id).order('case_date', { ascending: false });
+      if (selectedProcedure) q = q.eq('procedure', selectedProcedure);
+      const { data } = await q;
+      setDebriefs(data || []);
+      setLoading(false);
+    };
+    load();
+  }, [attending.id, selectedProcedure]);
+
+  const difficultyColor = (d) => d >= 4 ? '#c04a3a' : d >= 3 ? '#8a7a3a' : '#4a7a5a';
+  const comfortColor = (c) => c >= 4 ? '#4a7a5a' : c >= 3 ? '#8a7a3a' : '#c04a3a';
+
+  return (
+    <div style={{ marginTop: 28 }}>
+      <div style={{ ...S.divider, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <span>Case Log {debriefs.length > 0 && <span style={{ opacity: 0.6 }}>({debriefs.length})</span>}</span>
+        <button onClick={() => navTo('addDebrief', attending, selectedProcedure || null)}
+          style={{ ...S.ghostBtn, fontSize: 10, color: '#7aacca', letterSpacing: '0.1em' }}>+ Debrief</button>
+      </div>
+      {loading ? <div style={{ padding: '10px 0' }}><Spinner /></div> :
+        debriefs.length === 0 ? (
+          <div style={{ fontSize: 12, color: 'var(--text-muted)', fontStyle: 'italic', fontFamily: 'var(--font-serif)', padding: '8px 0' }}>
+            No cases logged yet with Dr. {attending.name}{selectedProcedure ? ` for ${selectedProcedure}` : ''}.
+          </div>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            {debriefs.map(d => (
+              <div key={d.id} style={{ padding: '10px 14px', background: 'rgba(60,90,130,0.06)', border: '1px solid rgba(60,90,160,0.15)', borderRadius: 'var(--radius)', cursor: 'pointer' }}
+                onClick={() => setExpanded(expanded === d.id ? null : d.id)}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+                  <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+                    <span style={{ fontSize: 13, color: 'var(--text)', fontFamily: 'var(--font-serif)' }}>{d.procedure}</span>
+                    {d.resident_name && <span style={{ fontSize: 11, color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>{d.resident_name}</span>}
+                  </div>
+                  <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexShrink: 0 }}>
+                    {d.difficulty && <span style={{ fontSize: 10, color: difficultyColor(d.difficulty), fontFamily: 'var(--font-mono)' }}>Diff {d.difficulty}/5</span>}
+                    {d.comfort && <span style={{ fontSize: 10, color: comfortColor(d.comfort), fontFamily: 'var(--font-mono)' }}>Cmft {d.comfort}/5</span>}
+                    <span style={{ fontSize: 10, color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>{new Date(d.case_date).toLocaleDateString()}</span>
+                    <span style={{ fontSize: 12, color: 'var(--text-muted)', transition: 'transform 0.15s', display: 'inline-block', transform: expanded === d.id ? 'rotate(90deg)' : 'none' }}>›</span>
+                  </div>
+                </div>
+                {expanded === d.id && (
+                  <div style={{ marginTop: 10, paddingTop: 10, borderTop: '1px solid rgba(255,255,255,0.06)', display: 'flex', flexDirection: 'column', gap: 10 }}>
+                    {d.notes && (
+                      <div>
+                        <div style={{ fontSize: 10, letterSpacing: '0.14em', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', textTransform: 'uppercase', marginBottom: 4 }}>Debrief Notes</div>
+                        <div style={{ fontSize: 13, color: '#c8c0a8', lineHeight: 1.65, fontFamily: 'var(--font-serif)' }}>{d.notes}</div>
+                      </div>
+                    )}
+                    {d.pearls && (
+                      <div style={{ padding: '10px 12px', background: 'rgba(180,140,60,0.06)', border: '1px solid rgba(180,140,60,0.2)', borderRadius: 4 }}>
+                        <div style={{ fontSize: 10, letterSpacing: '0.14em', color: 'var(--gold)', fontFamily: 'var(--font-mono)', textTransform: 'uppercase', marginBottom: 4 }}>★ Pearls</div>
+                        <div style={{ fontSize: 13, color: '#c8b870', lineHeight: 1.65, fontFamily: 'var(--font-serif)' }}>{d.pearls}</div>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+    </div>
+  );
+}
+
+// ── Add Debrief View ───────────────────────────────────────────────────────
+function AddDebriefView({ attending: preselectedAttending, allProcedures, attendings, navTo, showFlash, loadData }) {
+  const today = new Date().toISOString().split('T')[0];
+  const [form, setForm] = useState({
+    attending_id: preselectedAttending?.id || '',
+    procedure: '',
+    case_date: today,
+    resident_name: '',
+    difficulty: 0,
+    comfort: 0,
+    notes: '',
+    pearls: '',
+  });
+  const [savePearlToPrefLog, setSavePearlToPrefLog] = useState(false);
+  const [pearlCategory, setPearlCategory] = useState('Critical Steps');
+  const [saving, setSaving] = useState(false);
+
+  const selectedAttending = attendings.find(a => a.id === form.attending_id) || preselectedAttending;
+
+  const handleSave = async () => {
+    if (!form.attending_id || !form.procedure || !form.case_date) {
+      showFlash('Attending, procedure, and date are required', 'error'); return;
+    }
+    setSaving(true);
+    try {
+      const { difficulty, comfort, ...rest } = form;
+      await supabase.from('debriefs').insert([{
+        ...rest,
+        difficulty: difficulty || null,
+        comfort: comfort || null,
+      }]);
+
+      // Optionally save pearls to preference log
+      if (savePearlToPrefLog && form.pearls.trim() && form.attending_id) {
+        await supabase.from('preferences').insert([{
+          attending_id: form.attending_id,
+          procedure: form.procedure,
+          category: pearlCategory,
+          note: form.pearls.trim(),
+          critical: false,
+        }]);
+      }
+
+      await loadData();
+      showFlash('Debrief saved' + (savePearlToPrefLog && form.pearls.trim() ? ' · Pearl added to preference log' : ''));
+      navTo('debrief');
+    } catch (e) {
+      showFlash('Error saving debrief', 'error');
+    }
+    setSaving(false);
+  };
+
+  const difficultyLabels = ['', 'Straightforward', 'Minor challenges', 'Moderate difficulty', 'Difficult', 'Very difficult / crisis'];
+  const comfortLabels = ['', 'Uncomfortable', 'Somewhat comfortable', 'Comfortable', 'Confident', 'Very confident'];
+
+  return (
+    <div className="fade-in">
+      <button onClick={() => navTo('debrief')} style={S.backBtn}>← Case Log</button>
+      <h2 style={S.sectionHead}>Case Debrief</h2>
+      <p style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 24, fontStyle: 'italic' }}>
+        Log a case, capture what you learned, and optionally save pearls to the preference log.
+      </p>
+
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+
+        {/* Attending + Procedure + Date */}
+        <div style={{ ...S.card, background: 'var(--bg3)' }}>
+          <div style={S.divider}>Case Details</div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+              <Field label="Attending *">
+                <select value={form.attending_id} onChange={e => setForm({...form, attending_id: e.target.value})}>
+                  <option value="">Select attending...</option>
+                  {attendings.map(a => <option key={a.id} value={a.id}>Dr. {a.name}</option>)}
+                </select>
+              </Field>
+              <Field label="Date *">
+                <input type="date" value={form.case_date} onChange={e => setForm({...form, case_date: e.target.value})} />
+              </Field>
+            </div>
+            <Field label="Procedure *">
+              <select value={form.procedure} onChange={e => setForm({...form, procedure: e.target.value})}>
+                <option value="">Select procedure...</option>
+                {allProcedures.map(p => <option key={p}>{p}</option>)}
+              </select>
+            </Field>
+            <Field label="Your Initials / Name">
+              <input value={form.resident_name} onChange={e => setForm({...form, resident_name: e.target.value})} placeholder="e.g. JD, Smith" />
+            </Field>
+          </div>
+        </div>
+
+        {/* Ratings */}
+        <div style={{ ...S.card, background: 'var(--bg3)' }}>
+          <div style={S.divider}>Ratings</div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }}>
+            <div>
+              <label style={S.label}>Case Difficulty</label>
+              <StarRating value={form.difficulty} onChange={v => setForm({...form, difficulty: v})} color="#c04a3a" />
+              {form.difficulty > 0 && <div style={{ fontSize: 11, color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', marginTop: 4 }}>{difficultyLabels[form.difficulty]}</div>}
+            </div>
+            <div>
+              <label style={S.label}>My Comfort Level</label>
+              <StarRating value={form.comfort} onChange={v => setForm({...form, comfort: v})} color="#4a9a6a" />
+              {form.comfort > 0 && <div style={{ fontSize: 11, color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', marginTop: 4 }}>{comfortLabels[form.comfort]}</div>}
+            </div>
+          </div>
+        </div>
+
+        {/* Notes */}
+        <div style={{ ...S.card, background: 'var(--bg3)' }}>
+          <div style={S.divider}>Debrief Notes</div>
+          <Field label="General Notes / What happened">
+            <textarea value={form.notes} onChange={e => setForm({...form, notes: e.target.value})}
+              placeholder="How did the case go? What went well, what was challenging? Attending feedback?"
+              rows={4} />
+          </Field>
+        </div>
+
+        {/* Pearls */}
+        <div style={{ ...S.card, background: 'rgba(180,140,40,0.04)', borderColor: 'rgba(180,140,40,0.2)' }}>
+          <div style={{ ...S.divider, color: '#9a8a4a' }}>★ Pearls & Tips</div>
+          <Field label="Technical pearls, tips, or &quot;if X then do Y&quot; advice from this attending">
+            <textarea value={form.pearls} onChange={e => setForm({...form, pearls: e.target.value})}
+              placeholder={`e.g. If you encounter significant inflammation around Calot's triangle, Dr. ${selectedAttending?.name || '___'} recommends converting early rather than dissecting blindly. Always score the peritoneum medial to lateral first...`}
+              rows={5} />
+          </Field>
+
+          {form.pearls.trim() && (
+            <div style={{ marginTop: 12, padding: '12px 14px', background: 'rgba(180,140,40,0.06)', border: '1px solid rgba(180,140,40,0.2)', borderRadius: 'var(--radius)' }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', marginBottom: savePearlToPrefLog ? 12 : 0 }}>
+                <input type="checkbox" checked={savePearlToPrefLog} onChange={e => setSavePearlToPrefLog(e.target.checked)}
+                  style={{ width: 14, height: 14, accentColor: 'var(--gold)', margin: 0 }} />
+                <span style={{ fontSize: 13, color: 'var(--gold)', fontFamily: 'var(--font-mono)', letterSpacing: '0.04em' }}>
+                  Also save to Dr. {selectedAttending?.name || '___'}'s preference log
+                </span>
+              </label>
+              {savePearlToPrefLog && (
+                <Field label="Save under category">
+                  <select value={pearlCategory} onChange={e => setPearlCategory(e.target.value)}>
+                    {['Positioning','Prep & Drape','Port Placement','Instrument Preference','Dissection Technique','Critical Steps','Closure','Pet Peeves','Post-op Orders','Other'].map(c => <option key={c}>{c}</option>)}
+                  </select>
+                </Field>
+              )}
+            </div>
+          )}
+        </div>
+
+        <button onClick={handleSave} style={S.primaryBtn} disabled={saving}>
+          {saving ? <Spinner /> : 'Save Debrief'}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ── Debrief View (browse all) ─────────────────────────────────────────────
+function DebriefView({ attendings, allProcedures, navTo, showFlash }) {
+  const [debriefs, setDebriefs] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [filterAttending, setFilterAttending] = useState('');
+  const [filterProcedure, setFilterProcedure] = useState('');
+  const [search, setSearch] = useState('');
+  const [expanded, setExpanded] = useState(null);
+  const [deleting, setDeleting] = useState(null);
+
+  const loadDebriefs = useCallback(async () => {
+    setLoading(true);
+    const { data } = await supabase.from('debriefs').select('*').order('case_date', { ascending: false });
+    setDebriefs(data || []);
+    setLoading(false);
+  }, []);
+
+  useEffect(() => { loadDebriefs(); }, [loadDebriefs]);
+
+  const handleDelete = async (d) => {
+    const attName = attendings.find(a => a.id === d.attending_id)?.name || 'Unknown';
+    await archiveItem('debrief', `${d.procedure} w/ Dr. ${attName} (${d.case_date})`, { debrief: d });
+    await supabase.from('debriefs').delete().eq('id', d.id);
+    setDeleting(null);
+    await loadDebriefs();
+    showFlash('Debrief removed — saved to Archive', 'error');
+  };
+
+  const filtered = debriefs.filter(d => {
+    const att = attendings.find(a => a.id === d.attending_id);
+    const attName = att ? `Dr. ${att.name}` : '';
+    if (filterAttending && d.attending_id !== filterAttending) return false;
+    if (filterProcedure && d.procedure !== filterProcedure) return false;
+    if (search && !attName.toLowerCase().includes(search.toLowerCase()) && !d.procedure.toLowerCase().includes(search.toLowerCase()) && !(d.notes || '').toLowerCase().includes(search.toLowerCase()) && !(d.pearls || '').toLowerCase().includes(search.toLowerCase()) && !(d.resident_name || '').toLowerCase().includes(search.toLowerCase())) return false;
+    return true;
+  });
+
+  const difficultyColor = (d) => d >= 4 ? '#c04a3a' : d >= 3 ? '#8a7a3a' : '#4a7a5a';
+  const comfortColor = (c) => c >= 4 ? '#4a7a5a' : c >= 3 ? '#8a7a3a' : '#c04a3a';
+  const starStr = (n) => n ? '★'.repeat(n) + '☆'.repeat(5-n) : null;
+
+  return (
+    <div className="fade-in">
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 6 }}>
+        <div>
+          <h2 style={S.sectionHead}>Case Log</h2>
+          <p style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 16, fontStyle: 'italic' }}>
+            All logged cases across attendings and procedures.
+          </p>
+        </div>
+        <button onClick={() => navTo('addDebrief', null, null)} style={{ ...S.secondaryBtn, flexShrink: 0, color: '#7aacca', borderColor: 'rgba(100,140,180,0.3)' }}>+ Debrief</button>
+      </div>
+
+      {/* Filters */}
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 16 }}>
+        <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search notes, pearls, resident..." style={{ flex: 1, minWidth: 160 }} />
+        <select value={filterAttending} onChange={e => setFilterAttending(e.target.value)} style={{ flex: 1, minWidth: 140 }}>
+          <option value="">All Attendings</option>
+          {attendings.map(a => <option key={a.id} value={a.id}>Dr. {a.name}</option>)}
+        </select>
+        <select value={filterProcedure} onChange={e => setFilterProcedure(e.target.value)} style={{ flex: 1, minWidth: 140 }}>
+          <option value="">All Procedures</option>
+          {allProcedures.map(p => <option key={p}>{p}</option>)}
+        </select>
+      </div>
+
+      {/* Stats bar */}
+      {debriefs.length > 0 && (
+        <div style={{ display: 'flex', gap: 16, marginBottom: 20, padding: '10px 14px', background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 'var(--radius)', flexWrap: 'wrap' }}>
+          <span style={{ fontSize: 11, color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>{debriefs.length} total cases</span>
+          <span style={{ fontSize: 11, color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>{[...new Set(debriefs.map(d => d.attending_id))].length} attendings</span>
+          <span style={{ fontSize: 11, color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>{[...new Set(debriefs.map(d => d.procedure))].length} procedures</span>
+          {debriefs.some(d => d.difficulty) && <span style={{ fontSize: 11, color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>Avg difficulty: {(debriefs.filter(d=>d.difficulty).reduce((s,d)=>s+d.difficulty,0)/debriefs.filter(d=>d.difficulty).length).toFixed(1)}/5</span>}
+          {debriefs.some(d => d.comfort) && <span style={{ fontSize: 11, color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>Avg comfort: {(debriefs.filter(d=>d.comfort).reduce((s,d)=>s+d.comfort,0)/debriefs.filter(d=>d.comfort).length).toFixed(1)}/5</span>}
+        </div>
+      )}
+
+      {loading ? (
+        <div style={{ textAlign: 'center', padding: 40 }}><Spinner /></div>
+      ) : filtered.length === 0 ? (
+        <div style={{ textAlign: 'center', padding: '50px 20px', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', fontSize: 12, border: '1px dashed rgba(255,255,255,0.07)', borderRadius: 6 }}>
+          {debriefs.length === 0 ? 'No cases logged yet. Hit + Debrief to add the first one.' : 'No cases match your filters.'}
+        </div>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {filtered.map(d => {
+            const att = attendings.find(a => a.id === d.attending_id);
+            return (
+              <div key={d.id} style={{ ...S.card, borderLeft: '3px solid rgba(100,140,180,0.4)' }}>
+                {/* Header row */}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8, cursor: 'pointer' }}
+                  onClick={() => setExpanded(expanded === d.id ? null : d.id)}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginBottom: 4 }}>
+                      <span style={{ fontSize: 15, color: 'var(--text)', fontFamily: 'var(--font-serif)' }}>{d.procedure}</span>
+                      {d.pearls && <span style={{ fontSize: 10, color: 'var(--gold)', fontFamily: 'var(--font-mono)' }}>★ pearl</span>}
+                    </div>
+                    <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
+                      {att && <span style={{ fontSize: 12, color: '#8a9a8a', fontFamily: 'var(--font-mono)' }}>Dr. {att.name}</span>}
+                      {d.resident_name && <span style={{ fontSize: 11, color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>· {d.resident_name}</span>}
+                      <span style={{ fontSize: 11, color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>· {new Date(d.case_date + 'T12:00:00').toLocaleDateString()}</span>
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexShrink: 0 }}>
+                    {d.difficulty && <span style={{ fontSize: 11, color: difficultyColor(d.difficulty), fontFamily: 'var(--font-mono)', letterSpacing: '0.04em' }}>D{d.difficulty}</span>}
+                    {d.comfort && <span style={{ fontSize: 11, color: comfortColor(d.comfort), fontFamily: 'var(--font-mono)', letterSpacing: '0.04em' }}>C{d.comfort}</span>}
+                    <span style={{ fontSize: 14, color: 'var(--text-muted)', display: 'inline-block', transition: 'transform 0.15s', transform: expanded === d.id ? 'rotate(90deg)' : 'none' }}>›</span>
+                  </div>
+                </div>
+
+                {/* Expanded content */}
+                {expanded === d.id && (
+                  <div style={{ marginTop: 12, paddingTop: 12, borderTop: '1px solid rgba(255,255,255,0.06)', display: 'flex', flexDirection: 'column', gap: 12 }}>
+                    {/* Ratings detail */}
+                    <div style={{ display: 'flex', gap: 20, flexWrap: 'wrap' }}>
+                      {d.difficulty && (
+                        <div>
+                          <div style={{ fontSize: 10, letterSpacing: '0.14em', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', textTransform: 'uppercase', marginBottom: 2 }}>Difficulty</div>
+                          <div style={{ fontSize: 14, color: difficultyColor(d.difficulty) }}>{starStr(d.difficulty)}</div>
+                        </div>
+                      )}
+                      {d.comfort && (
+                        <div>
+                          <div style={{ fontSize: 10, letterSpacing: '0.14em', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', textTransform: 'uppercase', marginBottom: 2 }}>Comfort</div>
+                          <div style={{ fontSize: 14, color: comfortColor(d.comfort) }}>{starStr(d.comfort)}</div>
+                        </div>
+                      )}
+                    </div>
+
+                    {d.notes && (
+                      <div>
+                        <div style={{ fontSize: 10, letterSpacing: '0.14em', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', textTransform: 'uppercase', marginBottom: 4 }}>Debrief Notes</div>
+                        <div style={{ fontSize: 13, color: '#c8c0a8', lineHeight: 1.7, fontFamily: 'var(--font-serif)', whiteSpace: 'pre-wrap' }}>{d.notes}</div>
+                      </div>
+                    )}
+
+                    {d.pearls && (
+                      <div style={{ padding: '10px 14px', background: 'rgba(180,140,60,0.06)', border: '1px solid rgba(180,140,60,0.2)', borderRadius: 4 }}>
+                        <div style={{ fontSize: 10, letterSpacing: '0.14em', color: 'var(--gold)', fontFamily: 'var(--font-mono)', textTransform: 'uppercase', marginBottom: 4 }}>★ Pearls & Tips</div>
+                        <div style={{ fontSize: 13, color: '#c8b870', lineHeight: 1.7, fontFamily: 'var(--font-serif)', whiteSpace: 'pre-wrap' }}>{d.pearls}</div>
+                      </div>
+                    )}
+
+                    {/* Actions */}
+                    <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 12, paddingTop: 4 }}>
+                      {deleting === d.id ? (
+                        <>
+                          <span style={{ fontSize: 12, color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', alignSelf: 'center' }}>Delete this debrief?</span>
+                          <button onClick={() => handleDelete(d)} style={{ ...S.secondaryBtn, fontSize: 10, color: 'var(--red)', borderColor: 'rgba(192,80,58,0.3)' }}>Confirm</button>
+                          <button onClick={() => setDeleting(null)} style={{ ...S.secondaryBtn, fontSize: 10 }}>Cancel</button>
+                        </>
+                      ) : (
+                        <button onClick={() => setDeleting(d.id)} style={{ ...S.ghostBtn, fontSize: 11, color: '#5a3a2a' }}>Delete</button>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
       )}
     </div>
   );
