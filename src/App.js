@@ -321,7 +321,7 @@ export default function App() {
               {view === 'addNote' && selectedAttending && <AddNoteView attending={selectedAttending} selectedProcedure={selectedProcedure} navTo={navTo} showFlash={showFlash} loadData={loadData} allProcedures={allProcedures} allPrefCategories={allPrefCategories} />}
               {view === 'resources' && <ResourcesView allProcedures={allProcedures} showFlash={showFlash} />}
               {view === 'opNote' && <OpNoteView allProcedures={allProcedures} attendings={attendings} getPrefsForProcedure={getPrefsForProcedure} />}
-              {view === 'procedures' && <ProceduresView customProcedures={customProcedures} loadData={loadData} showFlash={showFlash} allProcedures={allProcedures} attendings={attendings} />}
+              {view === 'procedures' && <ProceduresView customProcedures={customProcedures} loadData={loadData} showFlash={showFlash} allProcedures={allProcedures} attendings={attendings} navTo={navTo} />}
               {view === 'archive' && <ArchiveView showFlash={showFlash} loadData={loadData} requireAdmin={requireAdmin} />}
               {view === 'debrief' && <DebriefView attendings={attendings} allProcedures={allProcedures} navTo={navTo} showFlash={showFlash} userId={session.user.id} />}
               {view === 'addDebrief' && <AddDebriefView attending={selectedAttending} allProcedures={allProcedures} attendings={attendings} navTo={navTo} showFlash={showFlash} loadData={loadData} userId={session.user.id} />}
@@ -789,6 +789,136 @@ function AddNoteView({ attending, selectedProcedure, navTo, showFlash, loadData,
           {saving ? <Spinner /> : 'Save Note'}
         </button>
       </div>
+
+      {/* Procedure detail panel */}
+      {selectedProc && (
+        <ProcedureDetailPanel
+          procedure={selectedProc}
+          attendings={attendings}
+          navTo={navTo}
+          onClose={() => setSelectedProc(null)}
+        />
+      )}
+    </div>
+  );
+}
+
+// ── Procedure Detail Panel ─────────────────────────────────────────────────
+function ProcedureDetailPanel({ procedure, attendings, navTo, onClose }) {
+  const [resources, setResources] = useState([]);
+  const [debriefs, setDebriefs] = useState([]);
+  const [loadingRes, setLoadingRes] = useState(true);
+  const [loadingDeb, setLoadingDeb] = useState(true);
+
+  useEffect(() => {
+    const load = async () => {
+      setLoadingRes(true);
+      const { data } = await supabase.from('resources').select('*').eq('procedure', procedure).order('created_at');
+      setResources(data || []);
+      setLoadingRes(false);
+    };
+    load();
+  }, [procedure]);
+
+  useEffect(() => {
+    const load = async () => {
+      setLoadingDeb(true);
+      const { data } = await supabase.from('debriefs').select('pearls, attending_id').eq('procedure', procedure).not('pearls', 'is', null).neq('pearls', '');
+      setDebriefs(data || []);
+      setLoadingDeb(false);
+    };
+    load();
+  }, [procedure]);
+
+  // All attending prefs for this procedure, grouped by attending
+  const attendingsWithPrefs = attendings
+    .map(a => ({ ...a, prefs: (a.prefs || []).filter(p => p.procedure === procedure) }))
+    .filter(a => a.prefs.length > 0);
+
+  const totalPrefs = attendingsWithPrefs.reduce((n, a) => n + a.prefs.length, 0);
+
+  return (
+    <div style={{ marginTop: 32, borderTop: '2px solid var(--border)', paddingTop: 24 }} className="fade-in">
+      {/* Header */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 20 }}>
+        <div>
+          <div style={{ fontSize: 10, letterSpacing: '0.2em', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', textTransform: 'uppercase', marginBottom: 4 }}>Procedure Overview</div>
+          <h3 style={{ ...S.sectionHead, fontSize: 22 }}>{procedure}</h3>
+          <div style={{ fontSize: 11, color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', marginTop: 3 }}>
+            {totalPrefs} preference {totalPrefs === 1 ? 'note' : 'notes'} across {attendingsWithPrefs.length} {attendingsWithPrefs.length === 1 ? 'attending' : 'attendings'}
+            {resources.length > 0 && ` · ${resources.length} ${resources.length === 1 ? 'resource' : 'resources'}`}
+            {debriefs.length > 0 && ` · ${debriefs.length} shared ${debriefs.length === 1 ? 'pearl' : 'pearls'}`}
+          </div>
+        </div>
+        <button onClick={onClose} style={{ ...S.ghostBtn, fontSize: 18, lineHeight: 1, color: 'var(--text-muted)', padding: '0 4px' }}>×</button>
+      </div>
+
+      {/* Attending prefs */}
+      {attendingsWithPrefs.length === 0 ? (
+        <div style={{ padding: '20px', background: 'rgba(255,255,255,0.02)', border: '1px dashed rgba(255,255,255,0.07)', borderRadius: 'var(--radius)', fontSize: 12, color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', textAlign: 'center', marginBottom: 16 }}>
+          No preference notes logged for this procedure yet.
+        </div>
+      ) : (
+        <div style={{ marginBottom: 20 }}>
+          {attendingsWithPrefs.map(a => (
+            <div key={a.id} style={{ marginBottom: 16 }}>
+              <div style={{ ...S.divider, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span>Dr. {a.name}{a.nickname ? ` — "${a.nickname}"` : ''}</span>
+                <button onClick={() => navTo('detail', a, procedure)}
+                  style={{ ...S.ghostBtn, fontSize: 10, color: '#4a8a9a', letterSpacing: '0.08em' }}>
+                  View full profile →
+                </button>
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                {a.prefs.map(pref => (
+                  <div key={pref.id} style={{ padding: '10px 14px', background: pref.critical ? 'var(--red-dim)' : 'rgba(255,255,255,0.02)', border: `1px solid ${pref.critical ? 'rgba(192,80,58,0.28)' : 'rgba(255,255,255,0.06)'}`, borderRadius: 'var(--radius)', display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+                    {pref.critical && <span style={{ color: 'var(--red)', fontSize: 11, flexShrink: 0, marginTop: 2 }}>⚠</span>}
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontSize: 13.5, color: '#d0c8b0', lineHeight: 1.65, fontFamily: 'var(--font-serif)' }}>{pref.note}</div>
+                      <div style={{ fontSize: 10, color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', marginTop: 4 }}>{pref.category}</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Shared pearls from case logs */}
+      {!loadingDeb && debriefs.length > 0 && (
+        <div style={{ marginBottom: 20 }}>
+          <div style={{ ...S.divider, color: '#9a8a4a' }}>★ Shared Pearls from Case Logs</div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            {debriefs.map((d, i) => {
+              const att = attendings.find(a => a.id === d.attending_id);
+              return (
+                <div key={i} style={{ padding: '10px 14px', background: 'rgba(180,140,40,0.05)', border: '1px solid rgba(180,140,40,0.18)', borderRadius: 'var(--radius)' }}>
+                  <div style={{ fontSize: 13, color: '#c8b870', lineHeight: 1.65, fontFamily: 'var(--font-serif)', whiteSpace: 'pre-wrap' }}>{d.pearls}</div>
+                  {att && <div style={{ fontSize: 10, color: '#7a6a3a', fontFamily: 'var(--font-mono)', marginTop: 4 }}>w/ Dr. {att.name}</div>}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Resources */}
+      {!loadingRes && resources.length > 0 && (
+        <div style={{ marginBottom: 8 }}>
+          <div style={S.divider}>Resources</div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            {resources.map(r => (
+              <div key={r.id} style={{ padding: '10px 14px', background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 'var(--radius)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
+                <div>
+                  <a href={r.url} target="_blank" rel="noopener noreferrer" style={{ fontSize: 13, color: '#7aacca', fontFamily: 'var(--font-serif)', textDecoration: 'none' }}>{r.title}</a>
+                  <div style={{ fontSize: 10, color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', marginTop: 3 }}>{r.category}{r.notes ? ` · ${r.notes}` : ''}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -1051,7 +1181,7 @@ function OpNoteView({ allProcedures, attendings, getPrefsForProcedure }) {
 }
 
 // ── Procedures View ────────────────────────────────────────────────────────
-function ProceduresView({ customProcedures, loadData, showFlash, allProcedures, attendings }) {
+function ProceduresView({ customProcedures, loadData, showFlash, allProcedures, attendings, navTo }) {
   const [newProc, setNewProc] = useState('');
   const [saving, setSaving] = useState(false);
   // Edit modal state
@@ -1060,6 +1190,7 @@ function ProceduresView({ customProcedures, loadData, showFlash, allProcedures, 
   const [renameTo, setRenameTo] = useState('');
   const [splitNames, setSplitNames] = useState(['', '']);
   const [editSaving, setEditSaving] = useState(false);
+  const [selectedProc, setSelectedProc] = useState(null);
 
   const handleAdd = async () => {
     const trimmed = newProc.trim();
@@ -1251,11 +1382,13 @@ function ProceduresView({ customProcedures, loadData, showFlash, allProcedures, 
           <div style={S.divider}>Custom Procedures</div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
             {customProcedures.map(p => (
-              <div key={p.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 14px', background: 'rgba(180,140,60,0.05)', border: '1px solid rgba(180,140,60,0.16)', borderRadius: 'var(--radius)' }}>
+              <div key={p.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 14px', background: selectedProc === p.name ? 'rgba(180,140,60,0.1)' : 'rgba(180,140,60,0.05)', border: `1px solid ${selectedProc === p.name ? 'rgba(200,168,64,0.4)' : 'rgba(180,140,60,0.16)'}`, borderRadius: 'var(--radius)', cursor: 'pointer', transition: 'all 0.15s' }}
+                onClick={() => setSelectedProc(selectedProc === p.name ? null : p.name)}>
                 <span style={{ fontSize: 14, color: 'var(--text)', fontFamily: 'var(--font-serif)' }}>{p.name}</span>
                 <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
-                  <button onClick={() => openEdit(p.name, false)} style={{ ...S.ghostBtn, fontSize: 11, color: 'var(--text-muted)' }}>edit</button>
-                  <button onClick={() => handleDelete(p.id)} style={{ background: 'none', border: 'none', color: '#5a3a2a', fontSize: 16, padding: 0, cursor: 'pointer', transition: 'color 0.15s' }} onMouseEnter={e => e.currentTarget.style.color='var(--red)'} onMouseLeave={e => e.currentTarget.style.color='#5a3a2a'}>×</button>
+                  <button onClick={e => { e.stopPropagation(); openEdit(p.name, false); }} style={{ ...S.ghostBtn, fontSize: 11, color: 'var(--text-muted)' }}>edit</button>
+                  <button onClick={e => { e.stopPropagation(); handleDelete(p.id); }} style={{ background: 'none', border: 'none', color: '#5a3a2a', fontSize: 16, padding: 0, cursor: 'pointer', transition: 'color 0.15s' }} onMouseEnter={e => e.currentTarget.style.color='var(--red)'} onMouseLeave={e => e.currentTarget.style.color='#5a3a2a'}>×</button>
+                  <span style={{ fontSize: 13, color: 'var(--text-muted)', transition: 'transform 0.15s', display: 'inline-block', transform: selectedProc === p.name ? 'rotate(90deg)' : 'none' }}>›</span>
                 </div>
               </div>
             ))}
@@ -1268,11 +1401,13 @@ function ProceduresView({ customProcedures, loadData, showFlash, allProcedures, 
         <div style={S.divider}>Default Procedures <span style={{ color: 'var(--text-muted)', fontWeight: 400 }}>— edit to rename or split</span></div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
           {visibleDefaults.map(p => (
-            <div key={p} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '9px 14px', background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 'var(--radius)' }}>
-              <span style={{ fontSize: 13, color: '#6a7a8a', fontFamily: 'var(--font-serif)' }}>{p}</span>
+            <div key={p} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '9px 14px', background: selectedProc === p ? 'rgba(255,255,255,0.05)' : 'rgba(255,255,255,0.02)', border: `1px solid ${selectedProc === p ? 'rgba(200,168,64,0.3)' : 'rgba(255,255,255,0.06)'}`, borderRadius: 'var(--radius)', cursor: 'pointer', transition: 'all 0.15s' }}
+              onClick={() => setSelectedProc(selectedProc === p ? null : p)}>
+              <span style={{ fontSize: 13, color: selectedProc === p ? 'var(--text)' : '#6a7a8a', fontFamily: 'var(--font-serif)', transition: 'color 0.15s' }}>{p}</span>
               <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
-                <button onClick={() => openEdit(p, true)} style={{ ...S.ghostBtn, fontSize: 11 }}>edit</button>
-                <button onClick={() => handleDeleteDefault(p)} style={{ background: 'none', border: 'none', color: '#5a3a2a', fontSize: 16, padding: 0, cursor: 'pointer', transition: 'color 0.15s' }} onMouseEnter={e => e.currentTarget.style.color='var(--red)'} onMouseLeave={e => e.currentTarget.style.color='#5a3a2a'}>×</button>
+                <button onClick={e => { e.stopPropagation(); openEdit(p, true); }} style={{ ...S.ghostBtn, fontSize: 11 }}>edit</button>
+                <button onClick={e => { e.stopPropagation(); handleDeleteDefault(p); }} style={{ background: 'none', border: 'none', color: '#5a3a2a', fontSize: 16, padding: 0, cursor: 'pointer', transition: 'color 0.15s' }} onMouseEnter={e => e.currentTarget.style.color='var(--red)'} onMouseLeave={e => e.currentTarget.style.color='#5a3a2a'}>×</button>
+                <span style={{ fontSize: 13, color: 'var(--text-muted)', transition: 'transform 0.15s', display: 'inline-block', transform: selectedProc === p ? 'rotate(90deg)' : 'none' }}>›</span>
               </div>
             </div>
           ))}
