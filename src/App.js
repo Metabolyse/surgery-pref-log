@@ -2085,9 +2085,10 @@ function AttendingDebriefInline({ attending, selectedProcedure, navTo, userId })
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
                   <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
                     <span style={{ fontSize: 13, color: 'var(--text)', fontFamily: 'var(--font-serif)' }}>{d.procedure}</span>
-                    {d.resident_name && <span style={{ fontSize: 11, color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>{d.resident_name}</span>}
+
                   </div>
                   <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexShrink: 0 }}>
+                    {d.entrustability && <span style={{ fontSize: 10, color: {'Limited Participation':'#8a4a3a','Direct Supervision':'#8a6a2a','Indirect Supervision':'#3a6a8a','Practice Ready':'#3a7a5a'}[d.entrustability], fontFamily: 'var(--font-mono)' }}>{d.entrustability}</span>}
                     {d.difficulty && <span style={{ fontSize: 10, color: difficultyColor(d.difficulty), fontFamily: 'var(--font-mono)' }}>Diff {d.difficulty}/5</span>}
                     {d.comfort && <span style={{ fontSize: 10, color: comfortColor(d.comfort), fontFamily: 'var(--font-mono)' }}>Cmft {d.comfort}/5</span>}
                     <span style={{ fontSize: 10, color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>{new Date(d.case_date).toLocaleDateString()}</span>
@@ -2125,11 +2126,11 @@ function AddDebriefView({ attending: preselectedAttending, allProcedures, attend
     attending_id: preselectedAttending?.id || '',
     procedure: '',
     case_date: today,
-    resident_name: '',
     difficulty: 0,
     comfort: 0,
     notes: '',
     pearls: '',
+    entrustability: '',
   });
   const [savePearlToPrefLog, setSavePearlToPrefLog] = useState(false);
   const [pearlCategory, setPearlCategory] = useState('Critical Steps');
@@ -2148,6 +2149,7 @@ function AddDebriefView({ attending: preselectedAttending, allProcedures, attend
         ...rest,
         difficulty: difficulty || null,
         comfort: comfort || null,
+        entrustability: rest.entrustability || null,
         user_id: userId,
       }]);
 
@@ -2205,25 +2207,40 @@ function AddDebriefView({ attending: preselectedAttending, allProcedures, attend
                 {allProcedures.map(p => <option key={p}>{p}</option>)}
               </select>
             </Field>
-            <Field label="Your Initials / Name">
-              <input value={form.resident_name} onChange={e => setForm({...form, resident_name: e.target.value})} placeholder="e.g. JD, Smith" />
-            </Field>
+
           </div>
         </div>
 
         {/* Ratings */}
         <div style={{ ...S.card, background: 'var(--bg3)' }}>
           <div style={S.divider}>Ratings</div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }}>
-            <div>
-              <label style={S.label}>Case Difficulty</label>
-              <StarRating value={form.difficulty} onChange={v => setForm({...form, difficulty: v})} color="#c04a3a" />
-              {form.difficulty > 0 && <div style={{ fontSize: 11, color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', marginTop: 4 }}>{difficultyLabels[form.difficulty]}</div>}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }}>
+              <div>
+                <label style={S.label}>Case Difficulty</label>
+                <StarRating value={form.difficulty} onChange={v => setForm({...form, difficulty: v})} color="#c04a3a" />
+                {form.difficulty > 0 && <div style={{ fontSize: 11, color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', marginTop: 4 }}>{difficultyLabels[form.difficulty]}</div>}
+              </div>
+              <div>
+                <label style={S.label}>My Comfort Level</label>
+                <StarRating value={form.comfort} onChange={v => setForm({...form, comfort: v})} color="#4a9a6a" />
+                {form.comfort > 0 && <div style={{ fontSize: 11, color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', marginTop: 4 }}>{comfortLabels[form.comfort]}</div>}
+              </div>
             </div>
             <div>
-              <label style={S.label}>My Comfort Level</label>
-              <StarRating value={form.comfort} onChange={v => setForm({...form, comfort: v})} color="#4a9a6a" />
-              {form.comfort > 0 && <div style={{ fontSize: 11, color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', marginTop: 4 }}>{comfortLabels[form.comfort]}</div>}
+              <label style={S.label}>Entrustability Level</label>
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 2 }}>
+                {['Limited Participation', 'Direct Supervision', 'Indirect Supervision', 'Practice Ready'].map(level => {
+                  const colors = { 'Limited Participation': '#8a4a3a', 'Direct Supervision': '#8a6a2a', 'Indirect Supervision': '#3a6a8a', 'Practice Ready': '#3a7a5a' };
+                  const active = form.entrustability === level;
+                  return (
+                    <button key={level} onClick={() => setForm({...form, entrustability: active ? '' : level})}
+                      style={{ background: active ? `${colors[level]}28` : 'rgba(255,255,255,0.03)', border: `1px solid ${active ? colors[level] : 'rgba(255,255,255,0.1)'}`, color: active ? colors[level] : 'var(--text-muted)', padding: '7px 12px', borderRadius: 'var(--radius)', fontSize: 11, fontFamily: 'var(--font-mono)', letterSpacing: '0.04em', cursor: 'pointer', transition: 'all 0.15s' }}>
+                      {level}
+                    </button>
+                  );
+                })}
+              </div>
             </div>
           </div>
         </div>
@@ -2240,10 +2257,16 @@ function AddDebriefView({ attending: preselectedAttending, allProcedures, attend
 
         {/* Pearls */}
         <div style={{ ...S.card, background: 'rgba(180,140,40,0.04)', borderColor: 'rgba(180,140,40,0.2)' }}>
-          <div style={{ ...S.divider, color: '#9a8a4a' }}>★ Pearls & Tips</div>
+          <div style={{ ...S.divider, color: '#9a8a4a', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span>★ Pearls & Tips</span>
+            <span style={{ fontSize: 9, letterSpacing: '0.12em', color: '#7a6a3a', fontFamily: 'var(--font-mono)', textTransform: 'uppercase', background: 'rgba(180,140,40,0.12)', border: '1px solid rgba(180,140,40,0.25)', padding: '2px 7px', borderRadius: 3 }}>🌐 Visible to all residents</span>
+          </div>
+          <div style={{ fontSize: 11, color: '#7a6a3a', fontFamily: 'var(--font-mono)', marginBottom: 10, lineHeight: 1.5 }}>
+            Technical pearls and tips are shared with the whole program — they contribute to the collective knowledge base.
+          </div>
           <Field label="Technical pearls, tips, or &quot;if X then do Y&quot; advice from this attending">
             <textarea value={form.pearls} onChange={e => setForm({...form, pearls: e.target.value})}
-              placeholder={`e.g. If you encounter significant inflammation around Calot's triangle, Dr. ${selectedAttending?.name || '___'} recommends converting early rather than dissecting blindly. Always score the peritoneum medial to lateral first...`}
+              placeholder={`e.g. If you encounter difficulty dissecting in Calot's triangle, try working laterally again. Stay right on the gallbladder and take each layer carefully. This dissection area is safer than a difficult, blind medial dissection.`}
               rows={5} />
           </Field>
 
@@ -2308,7 +2331,7 @@ function DebriefView({ attendings, allProcedures, navTo, showFlash, userId }) {
     const attName = att ? `Dr. ${att.name}` : '';
     if (filterAttending && d.attending_id !== filterAttending) return false;
     if (filterProcedure && d.procedure !== filterProcedure) return false;
-    if (search && !attName.toLowerCase().includes(search.toLowerCase()) && !d.procedure.toLowerCase().includes(search.toLowerCase()) && !(d.notes || '').toLowerCase().includes(search.toLowerCase()) && !(d.pearls || '').toLowerCase().includes(search.toLowerCase()) && !(d.resident_name || '').toLowerCase().includes(search.toLowerCase())) return false;
+    if (search && !attName.toLowerCase().includes(search.toLowerCase()) && !d.procedure.toLowerCase().includes(search.toLowerCase()) && !(d.notes || '').toLowerCase().includes(search.toLowerCase()) && !(d.pearls || '').toLowerCase().includes(search.toLowerCase())) return false;
     return true;
   });
 
@@ -2330,7 +2353,7 @@ function DebriefView({ attendings, allProcedures, navTo, showFlash, userId }) {
 
       {/* Filters */}
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 16 }}>
-        <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search notes, pearls, resident..." style={{ flex: 1, minWidth: 160 }} />
+        <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search notes, pearls, procedures..." style={{ flex: 1, minWidth: 160 }} />
         <select value={filterAttending} onChange={e => setFilterAttending(e.target.value)} style={{ flex: 1, minWidth: 140 }}>
           <option value="">All Attendings</option>
           {attendings.map(a => <option key={a.id} value={a.id}>Dr. {a.name}</option>)}
@@ -2374,11 +2397,11 @@ function DebriefView({ attendings, allProcedures, navTo, showFlash, userId }) {
                     </div>
                     <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
                       {att && <span style={{ fontSize: 12, color: '#8a9a8a', fontFamily: 'var(--font-mono)' }}>Dr. {att.name}</span>}
-                      {d.resident_name && <span style={{ fontSize: 11, color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>· {d.resident_name}</span>}
                       <span style={{ fontSize: 11, color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>· {new Date(d.case_date + 'T12:00:00').toLocaleDateString()}</span>
                     </div>
                   </div>
                   <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexShrink: 0 }}>
+                    {d.entrustability && <span style={{ fontSize: 10, color: {'Limited Participation':'#8a4a3a','Direct Supervision':'#8a6a2a','Indirect Supervision':'#3a6a8a','Practice Ready':'#3a7a5a'}[d.entrustability] || 'var(--text-muted)', fontFamily: 'var(--font-mono)', letterSpacing: '0.03em', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', padding: '2px 6px', borderRadius: 3 }}>{d.entrustability}</span>}
                     {d.difficulty && <span style={{ fontSize: 11, color: difficultyColor(d.difficulty), fontFamily: 'var(--font-mono)', letterSpacing: '0.04em' }}>D{d.difficulty}</span>}
                     {d.comfort && <span style={{ fontSize: 11, color: comfortColor(d.comfort), fontFamily: 'var(--font-mono)', letterSpacing: '0.04em' }}>C{d.comfort}</span>}
                     <span style={{ fontSize: 14, color: 'var(--text-muted)', display: 'inline-block', transition: 'transform 0.15s', transform: expanded === d.id ? 'rotate(90deg)' : 'none' }}>›</span>
@@ -2389,7 +2412,7 @@ function DebriefView({ attendings, allProcedures, navTo, showFlash, userId }) {
                 {expanded === d.id && (
                   <div style={{ marginTop: 12, paddingTop: 12, borderTop: '1px solid rgba(255,255,255,0.06)', display: 'flex', flexDirection: 'column', gap: 12 }}>
                     {/* Ratings detail */}
-                    <div style={{ display: 'flex', gap: 20, flexWrap: 'wrap' }}>
+                    <div style={{ display: 'flex', gap: 20, flexWrap: 'wrap', alignItems: 'flex-start' }}>
                       {d.difficulty && (
                         <div>
                           <div style={{ fontSize: 10, letterSpacing: '0.14em', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', textTransform: 'uppercase', marginBottom: 2 }}>Difficulty</div>
@@ -2400,6 +2423,12 @@ function DebriefView({ attendings, allProcedures, navTo, showFlash, userId }) {
                         <div>
                           <div style={{ fontSize: 10, letterSpacing: '0.14em', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', textTransform: 'uppercase', marginBottom: 2 }}>Comfort</div>
                           <div style={{ fontSize: 14, color: comfortColor(d.comfort) }}>{starStr(d.comfort)}</div>
+                        </div>
+                      )}
+                      {d.entrustability && (
+                        <div>
+                          <div style={{ fontSize: 10, letterSpacing: '0.14em', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', textTransform: 'uppercase', marginBottom: 4 }}>Entrustability</div>
+                          <div style={{ fontSize: 12, color: {'Limited Participation':'#8a4a3a','Direct Supervision':'#8a6a2a','Indirect Supervision':'#3a6a8a','Practice Ready':'#3a7a5a'}[d.entrustability], fontFamily: 'var(--font-mono)', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', padding: '4px 10px', borderRadius: 3, display: 'inline-block' }}>{d.entrustability}</div>
                         </div>
                       )}
                     </div>
