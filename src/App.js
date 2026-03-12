@@ -454,7 +454,8 @@ function AddAttendingView({ navTo, showFlash, loadData, allSpecialties, customSp
   const handleSave = async () => {
     if (!form.name.trim()) return;
     setSaving(true);
-    const { error } = await supabase.from('attendings').insert([{ ...form, specialty: form.specialties.join(', ') }]);
+    const { specialties, ...rest } = form;
+    const { error } = await supabase.from('attendings').insert([{ ...rest, specialty: specialties.join(', ') }]);
     setSaving(false);
     if (error) { showFlash('Error saving attending', 'error'); return; }
     await loadData();
