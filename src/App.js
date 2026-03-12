@@ -3,7 +3,7 @@ import { supabase } from './supabaseClient';
 import './index.css';
 
 // ── Constants ──────────────────────────────────────────────────────────────
-const DEFAULT_SPECIALTIES = ['General Surgery','Colorectal','Hepatobiliary','Foregut','Endocrine','Trauma','Vascular','Thoracic','Other'];
+const DEFAULT_SPECIALTIES = ['General Surgery','Colorectal','Hepatobiliary','Foregut','Endocrine','TACCS','Vascular','Thoracic','Other'];
 const SERVICE_INFO_CATEGORIES = ['Expectations','Follow-up Visits','Post-op Imaging','Post-op Labs','Dot Phrases','Consult Tips','Floor Management','Other'];
 const DEFAULT_PREF_CATEGORIES = ['Positioning','Prep & Drape','Port Placement','Instrument Preference','Dissection Technique','Critical Steps','Closure','Pet Peeves','Post-op Orders','Other'];
 const RESOURCE_CATEGORIES = ['Video','Atlas / Images','Guidelines','Article','Textbook','Other'];
@@ -2325,6 +2325,7 @@ function AddDebriefView({ attending: preselectedAttending, allProcedures, attend
   });
   const [savePearlToPrefLog, setSavePearlToPrefLog] = useState(false);
   const [pearlCategory, setPearlCategory] = useState('Critical Steps');
+  const [pearlCritical, setPearlCritical] = useState(false);
   const [saving, setSaving] = useState(false);
 
   const selectedAttending = attendings.find(a => a.id === form.attending_id) || preselectedAttending;
@@ -2351,7 +2352,7 @@ function AddDebriefView({ attending: preselectedAttending, allProcedures, attend
           procedure: form.procedure,
           category: pearlCategory,
           note: form.pearls.trim(),
-          critical: false,
+          critical: pearlCritical,
         }]);
       }
 
@@ -2462,20 +2463,29 @@ function AddDebriefView({ attending: preselectedAttending, allProcedures, attend
           </Field>
 
           {form.pearls.trim() && (
-            <div style={{ marginTop: 12, padding: '12px 14px', background: 'rgba(180,140,40,0.06)', border: '1px solid rgba(180,140,40,0.2)', borderRadius: 'var(--radius)' }}>
-              <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', marginBottom: savePearlToPrefLog ? 12 : 0 }}>
+            <div style={{ marginTop: 12, padding: '14px 16px', background: 'rgba(180,140,40,0.06)', border: '1px solid rgba(180,140,40,0.2)', borderRadius: 'var(--radius)' }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', marginBottom: savePearlToPrefLog ? 14 : 0 }}>
                 <input type="checkbox" checked={savePearlToPrefLog} onChange={e => setSavePearlToPrefLog(e.target.checked)}
                   style={{ width: 14, height: 14, accentColor: 'var(--gold)', margin: 0 }} />
                 <span style={{ fontSize: 13, color: 'var(--gold)', fontFamily: 'var(--font-mono)', letterSpacing: '0.04em' }}>
-                  Also save to Dr. {selectedAttending?.name || '___'}'s preference log
+                  Also log to Dr. {selectedAttending?.name || '___'}'s preference log
                 </span>
               </label>
               {savePearlToPrefLog && (
-                <Field label="Save under category">
-                  <select value={pearlCategory} onChange={e => setPearlCategory(e.target.value)}>
-                    {['Positioning','Prep & Drape','Port Placement','Instrument Preference','Dissection Technique','Critical Steps','Closure','Pet Peeves','Post-op Orders','Other'].map(c => <option key={c}>{c}</option>)}
-                  </select>
-                </Field>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                  <Field label="Category">
+                    <select value={pearlCategory} onChange={e => setPearlCategory(e.target.value)}>
+                      {['Positioning','Prep & Drape','Port Placement','Instrument Preference','Dissection Technique','Critical Steps','Closure','Pet Peeves','Post-op Orders','Other'].map(c => <option key={c}>{c}</option>)}
+                    </select>
+                  </Field>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', padding: '8px 10px', background: pearlCritical ? 'var(--red-dim)' : 'rgba(255,255,255,0.02)', border: `1px solid ${pearlCritical ? 'rgba(192,80,58,0.35)' : 'rgba(255,255,255,0.08)'}`, borderRadius: 'var(--radius)', transition: 'all 0.15s' }}>
+                    <input type="checkbox" checked={pearlCritical} onChange={e => setPearlCritical(e.target.checked)}
+                      style={{ width: 14, height: 14, accentColor: 'var(--red)', margin: 0 }} />
+                    <span style={{ fontSize: 12, color: pearlCritical ? 'var(--red)' : 'var(--text-muted)', fontFamily: 'var(--font-mono)', letterSpacing: '0.04em' }}>
+                      ⚠ Mark as critical / pet peeve
+                    </span>
+                  </label>
+                </div>
               )}
             </div>
           )}
