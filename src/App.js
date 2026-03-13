@@ -30,6 +30,26 @@ const S = {
 };
 
 // ── Helper components ──────────────────────────────────────────────────────
+// Collapses notes longer than ~2 lines
+const COLLAPSE_THRESHOLD = 120;
+function CollapsibleNote({ note, style }) {
+  const isLong = note && note.length > COLLAPSE_THRESHOLD;
+  const [expanded, setExpanded] = useState(false);
+  const displayText = isLong && !expanded ? note.slice(0, COLLAPSE_THRESHOLD).trimEnd() + '…' : note;
+  return (
+    <div>
+      <div style={{ fontSize: 14, color: '#d8d0b8', lineHeight: 1.65, fontFamily: 'var(--font-serif)', ...style }}>{displayText}</div>
+      {isLong && (
+        <button onClick={() => setExpanded(v => !v)} style={{ background: 'none', border: 'none', color: 'var(--gold)', fontFamily: 'var(--font-mono)', fontSize: 10, letterSpacing: '0.08em', cursor: 'pointer', padding: '3px 0 0', opacity: 0.7, transition: 'opacity 0.15s' }}
+          onMouseEnter={e => e.currentTarget.style.opacity = 1}
+          onMouseLeave={e => e.currentTarget.style.opacity = 0.7}>
+          {expanded ? '▲ show less' : '▼ show more'}
+        </button>
+      )}
+    </div>
+  );
+}
+
 function Field({ label, children }) {
   return <div style={{ marginBottom: 2 }}><label style={S.label}>{label}</label>{children}</div>;
 }
@@ -714,7 +734,7 @@ function DetailView({ attending, selectedProcedure, setSelectedProcedure, navTo,
                   <div key={p.id} style={{ display: 'flex', gap: 10, alignItems: 'flex-start', padding: '11px 14px', background: p.critical ? 'var(--red-dim)' : 'rgba(255,255,255,0.02)', border: `1px solid ${p.critical ? 'rgba(192,80,58,0.28)' : 'rgba(255,255,255,0.06)'}`, borderRadius: 'var(--radius)' }}>
                     {p.critical && <span style={{ fontSize: 11, color: 'var(--red)', marginTop: 1, flexShrink: 0 }}>⚠</span>}
                     <div style={{ flex: 1 }}>
-                      <div style={{ fontSize: 14, color: '#d8d0b8', lineHeight: 1.65, fontFamily: 'var(--font-serif)' }}>{p.note}</div>
+                      <CollapsibleNote note={p.note} />
                       <div style={{ marginTop: 5, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                         {!selectedProcedure && <span style={S.miniTag}>{p.category}</span>}
                         <span style={{ ...S.miniTag, color: '#3a4a3a' }}>{new Date(p.created_at).toLocaleDateString()}</span>
@@ -938,7 +958,7 @@ function ProcedureDetailPanel({ procedure, attendings, navTo, onClose }) {
                       <div key={pref.id} style={{ padding: '10px 14px', background: pref.critical ? 'var(--red-dim)' : 'rgba(255,255,255,0.02)', border: `1px solid ${pref.critical ? 'rgba(192,80,58,0.28)' : 'rgba(255,255,255,0.06)'}`, borderRadius: 'var(--radius)', display: 'flex', gap: 10, alignItems: 'flex-start' }}>
                         {pref.critical && <span style={{ color: 'var(--red)', fontSize: 11, flexShrink: 0, marginTop: 2 }}>⚠</span>}
                         <div style={{ flex: 1 }}>
-                          <div style={{ fontSize: 13.5, color: '#d0c8b0', lineHeight: 1.65, fontFamily: 'var(--font-serif)' }}>{pref.note}</div>
+                          <CollapsibleNote note={pref.note} style={{ fontSize: 13.5, color: '#d0c8b0' }} />
                           <div style={{ fontSize: 10, color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', marginTop: 4 }}>{pref.category}</div>
                         </div>
                       </div>
