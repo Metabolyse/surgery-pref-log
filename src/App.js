@@ -698,6 +698,12 @@ function DetailView({ attending, selectedProcedure, setSelectedProcedure, navTo,
               <button onClick={() => setEditingPref(null)} style={{ ...S.secondaryBtn, flex: 1 }}>Cancel</button>
               <button onClick={savePref} style={{ ...S.primaryBtn, flex: 2 }} disabled={saving}>{saving ? <Spinner /> : 'Save Changes'}</button>
             </div>
+            {editingPref?.procedure !== '__ALL__' && (
+              <button onClick={() => { handleCopyToGlobal(editingPref); setEditingPref(null); }}
+                style={{ ...S.ghostBtn, width: '100%', marginTop: 10, fontSize: 11, color: '#5a8a5a', borderColor: 'rgba(100,150,80,0.3)', border: '1px solid', borderRadius: 'var(--radius)', padding: '8px 0', textAlign: 'center' }}>
+                🌐 Copy to Global Preferences
+              </button>
+            )}
           </div>
         </div>
       )}
@@ -848,7 +854,6 @@ function DetailView({ attending, selectedProcedure, setSelectedProcedure, navTo,
                         <span style={{ ...S.miniTag, color: '#3a4a3a' }}>{new Date(p.created_at).toLocaleDateString()}</span>
                       </div>
                     </div>
-                    <button onClick={() => handleCopyToGlobal(p)} title="Copy to global preferences" style={{ background: 'none', border: 'none', color: '#4a6a4a', cursor: 'pointer', fontSize: 11, fontFamily: 'var(--font-mono)', padding: '0 4px', flexShrink: 0, transition: 'color 0.15s' }} onMouseEnter={e => e.currentTarget.style.color='#7a9a6a'} onMouseLeave={e => e.currentTarget.style.color='#4a6a4a'}>🌐</button>
                     <button onClick={() => openEditPref(p)} style={{ background: 'none', border: 'none', color: '#4a6a7a', cursor: 'pointer', fontSize: 11, fontFamily: 'var(--font-mono)', padding: '0 6px', flexShrink: 0 }}>edit</button>
                     <button onClick={() => handleDeletePref(p)} style={{ background: 'none', border: 'none', color: '#3a3a3a', fontSize: 16, padding: 0, lineHeight: 1, flexShrink: 0, transition: 'color 0.15s' }} onMouseEnter={e => e.currentTarget.style.color='#8a4a3a'} onMouseLeave={e => e.currentTarget.style.color='#3a3a3a'}>×</button>
                   </div>
