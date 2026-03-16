@@ -143,7 +143,7 @@ export default function App() {
 
   const allProcedures = [...new Set([...DEFAULT_PROCEDURES.filter(p => !hiddenDefaultProcedures.includes(p)), ...customProcedures.map(p => p.name)])].sort();
   const allSpecialties = [...new Set([...DEFAULT_SPECIALTIES, ...customSpecialties.map(s => s.name)])].sort();
-  const allPrefCategories = [...new Set([...DEFAULT_PREF_CATEGORIES, ...customPrefCategories.map(c => c.name)])];
+  const allPrefCategories = [...new Set([...DEFAULT_PREF_CATEGORIES, ...customPrefCategories.map(c => c.name)])].sort();
 
   const showFlash = useCallback((msg, type = 'success') => {
     setFlash({ msg, type });
