@@ -572,11 +572,35 @@ function ProcedureResourcesInline({ procedure }) {
 function DetailView({ attending, selectedProcedure, setSelectedProcedure, navTo, showFlash, loadData, getProceduresForAttending, getPrefsForProcedure, allProcedures, allSpecialties, customSpecialties, allPrefCategories, userId }) {
   const [deleting, setDeleting] = useState(false);
   const [editingAttending, setEditingAttending] = useState(false);
-  const [editingPref, setEditingPref] = useState(null); // pref object being edited
+  const [editingPref, setEditingPref] = useState(null);
   const [editForm, setEditForm] = useState({ name: '', specialties: [], nickname: '', notes: '' });
   const [editPrefForm, setEditPrefForm] = useState({ procedure: '', category: '', note: '', critical: false });
   const [saving, setSaving] = useState(false);
+  const [showCopyModal, setShowCopyModal] = useState(false);
+  const [copySourceProc, setCopySourceProc] = useState('');
+  const [copySelected, setCopySelected] = useState([]);
+  const [copying, setCopying] = useState(false);
   const procedures = getProceduresForAttending(attending);
+
+  // Global prefs (__ALL__) always shown when a specific procedure is selected
+  const globalPrefs = (attending.prefs || []).filter(p => p.procedure === '__ALL__');
+
+  const handleCopyPrefs = async () => {
+    if (!copySourceProc || copySelected.length === 0) return;
+    setCopying(true);
+    const sourcPrefs = (attending.prefs || []).filter(p => p.procedure === copySourceProc && copySelected.includes(p.id));
+    const inserts = sourcPrefs.map(({ id, created_at, procedure, ...rest }) => ({ ...rest, procedure: selectedProcedure }));
+    await supabase.from('preferences').insert(inserts);
+    await loadData();
+    setCopying(false);
+    setShowCopyModal(false);
+    setCopySelected([]);
+    setCopySourceProc('');
+    showFlash(`${inserts.length} preference${inserts.length > 1 ? 's' : ''} copied`);
+  };
+
+  const otherProcedures = procedures.filter(p => p !== selectedProcedure && p !== '__ALL__');
+  const sourcePrefsForModal = copySourceProc ? (attending.prefs || []).filter(p => p.procedure === copySourceProc) : [];
 
   const openEditAttending = () => {
     const specs = attending.specialty ? attending.specialty.split(', ').filter(Boolean) : [];
@@ -626,7 +650,7 @@ function DetailView({ attending, selectedProcedure, setSelectedProcedure, navTo,
     await loadData();
   };
 
-  const displayedPrefs = selectedProcedure ? getPrefsForProcedure(attending, selectedProcedure) : (attending.prefs || []);
+  const displayedPrefs = selectedProcedure ? getPrefsForProcedure(attending, selectedProcedure) : (attending.prefs || []).filter(p => p.procedure !== '__ALL__');
   const grouped = displayedPrefs.reduce((acc, p) => {
     const key = selectedProcedure ? p.category : p.procedure;
     if (!acc[key]) acc[key] = [];
@@ -689,6 +713,52 @@ function DetailView({ attending, selectedProcedure, setSelectedProcedure, navTo,
         </div>
       )}
 
+      {/* Copy Prefs Modal */}
+      {showCopyModal && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.75)', zIndex: 500, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+          <div style={{ background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 8, padding: 24, width: '100%', maxWidth: 520, boxShadow: '0 8px 40px rgba(0,0,0,0.6)', maxHeight: '85vh', display: 'flex', flexDirection: 'column' }}>
+            <div style={{ fontSize: 15, color: 'var(--text)', fontFamily: 'var(--font-serif)', marginBottom: 4 }}>Copy Preferences to {selectedProcedure}</div>
+            <div style={{ fontSize: 11, color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', marginBottom: 16 }}>Select a source procedure, then pick which preferences to copy over.</div>
+            <Field label="Copy from procedure">
+              <select value={copySourceProc} onChange={e => { setCopySourceProc(e.target.value); setCopySelected([]); }}>
+                <option value="">Select procedure...</option>
+                {otherProcedures.map(p => <option key={p}>{p}</option>)}
+              </select>
+            </Field>
+            {copySourceProc && (
+              <div style={{ flex: 1, overflowY: 'auto', marginTop: 14 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                  <div style={{ fontSize: 11, color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', letterSpacing: '0.08em', textTransform: 'uppercase' }}>{sourcePrefsForModal.length} preferences</div>
+                  <button onClick={() => setCopySelected(s => s.length === sourcePrefsForModal.length ? [] : sourcePrefsForModal.map(p => p.id))}
+                    style={{ ...S.ghostBtn, fontSize: 10, color: 'var(--gold)' }}>
+                    {copySelected.length === sourcePrefsForModal.length ? 'Deselect all' : 'Select all'}
+                  </button>
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  {sourcePrefsForModal.map(p => (
+                    <label key={p.id} style={{ display: 'flex', gap: 10, alignItems: 'flex-start', padding: '10px 12px', background: copySelected.includes(p.id) ? 'rgba(200,168,64,0.08)' : 'rgba(255,255,255,0.02)', border: `1px solid ${copySelected.includes(p.id) ? 'rgba(200,168,64,0.3)' : 'rgba(255,255,255,0.06)'}`, borderRadius: 'var(--radius)', cursor: 'pointer', transition: 'all 0.15s' }}>
+                      <input type="checkbox" checked={copySelected.includes(p.id)} onChange={e => setCopySelected(s => e.target.checked ? [...s, p.id] : s.filter(id => id !== p.id))}
+                        style={{ width: 14, height: 14, accentColor: 'var(--gold)', flexShrink: 0, marginTop: 2 }} />
+                      <div style={{ flex: 1 }}>
+                        {p.critical && <span style={{ color: 'var(--red)', fontSize: 10, marginRight: 6 }}>⚠</span>}
+                        <span style={{ fontSize: 13, color: '#d0c8b0', fontFamily: 'var(--font-serif)', lineHeight: 1.6 }}>{p.note}</span>
+                        <div style={{ fontSize: 10, color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', marginTop: 3 }}>{p.category}</div>
+                      </div>
+                    </label>
+                  ))}
+                </div>
+              </div>
+            )}
+            <div style={{ display: 'flex', gap: 8, marginTop: 16, flexShrink: 0 }}>
+              <button onClick={() => { setShowCopyModal(false); setCopySourceProc(''); setCopySelected([]); }} style={{ ...S.secondaryBtn, flex: 1 }}>Cancel</button>
+              <button onClick={handleCopyPrefs} disabled={copying || copySelected.length === 0} style={{ ...S.primaryBtn, flex: 2 }}>
+                {copying ? <Spinner /> : `Copy ${copySelected.length > 0 ? copySelected.length : ''} Preference${copySelected.length !== 1 ? 's' : ''}`}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
         <button onClick={() => navTo('list')} style={S.backBtn}>← All Attendings</button>
         <div style={{ display: 'flex', gap: 16 }}>
@@ -723,7 +793,29 @@ function DetailView({ attending, selectedProcedure, setSelectedProcedure, navTo,
         </div>
       )}
 
-      {(attending.prefs || []).length === 0 ? (
+      {/* Global prefs — always shown when a procedure is selected */}
+      {selectedProcedure && globalPrefs.length > 0 && (
+        <div style={{ marginBottom: 16 }}>
+          <div style={{ ...S.divider, color: '#7a8a6a', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span>🌐 Applies to All Procedures</span>
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {globalPrefs.map(p => (
+              <div key={p.id} style={{ display: 'flex', gap: 10, alignItems: 'flex-start', padding: '11px 14px', background: p.critical ? 'var(--red-dim)' : 'rgba(120,140,100,0.06)', border: `1px solid ${p.critical ? 'rgba(192,80,58,0.28)' : 'rgba(120,150,80,0.2)'}`, borderRadius: 'var(--radius)' }}>
+                {p.critical && <span style={{ fontSize: 11, color: 'var(--red)', marginTop: 1, flexShrink: 0 }}>⚠</span>}
+                <div style={{ flex: 1 }}>
+                  <CollapsibleNote note={p.note} />
+                  <div style={{ marginTop: 5 }}><span style={S.miniTag}>{p.category}</span></div>
+                </div>
+                <button onClick={() => openEditPref(p)} style={{ background: 'none', border: 'none', color: '#4a6a7a', cursor: 'pointer', fontSize: 11, fontFamily: 'var(--font-mono)', padding: '0 6px', flexShrink: 0 }}>edit</button>
+                <button onClick={() => handleDeletePref(p)} style={{ background: 'none', border: 'none', color: '#3a3a3a', fontSize: 16, padding: 0, lineHeight: 1, flexShrink: 0, transition: 'color 0.15s' }} onMouseEnter={e => e.currentTarget.style.color='#8a4a3a'} onMouseLeave={e => e.currentTarget.style.color='#3a3a3a'}>×</button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {(attending.prefs || []).filter(p => p.procedure !== '__ALL__').length === 0 && !selectedProcedure ? (
         <div style={{ textAlign: 'center', padding: '36px 20px', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', fontSize: 12, border: '1px dashed rgba(255,255,255,0.07)', borderRadius: 6, marginBottom: 16 }}>
           No preferences logged yet.
         </div>
@@ -756,8 +848,12 @@ function DetailView({ attending, selectedProcedure, setSelectedProcedure, navTo,
       {/* Inline resources — only shown when a specific procedure is selected */}
       <ProcedureResourcesInline procedure={selectedProcedure} />
 
-      <div style={{ marginTop: 16 }}>
-        <button onClick={() => navTo('addNote', attending, selectedProcedure || null)} style={S.primaryBtn}>+ Log Preference</button>
+      <div style={{ marginTop: 16, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+        <button onClick={() => navTo('addNote', attending, selectedProcedure || null)} style={{ ...S.primaryBtn, flex: 2 }}>+ Log Preference</button>
+        {selectedProcedure && otherProcedures.length > 0 && (
+          <button onClick={() => setShowCopyModal(true)} style={{ ...S.secondaryBtn, flex: 1, fontSize: 11, color: '#7aacca', borderColor: 'rgba(100,140,180,0.3)' }}>⇄ Copy from Procedure</button>
+        )}
+        <button onClick={() => navTo('addNote', attending, '__ALL__')} style={{ ...S.secondaryBtn, flex: 1, fontSize: 11, color: '#7a9a6a', borderColor: 'rgba(100,150,80,0.3)' }}>🌐 Log Global Pref</button>
       </div>
 
       {/* Op Note inline — only when a procedure is selected */}
@@ -914,6 +1010,7 @@ function AddNoteView({ attending, selectedProcedure, navTo, showFlash, loadData,
         <Field label="Procedure *">
           <select value={form.procedure} onChange={e => setForm({...form, procedure: e.target.value})}>
             <option value="">Select procedure...</option>
+            <option value="__ALL__">🌐 All Procedures (global preference)</option>
             {allProcedures.map(p => <option key={p}>{p}</option>)}
           </select>
         </Field>
