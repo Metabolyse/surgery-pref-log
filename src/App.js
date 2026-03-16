@@ -1147,7 +1147,7 @@ function AddNoteView({ attending, selectedProcedure, navTo, showFlash, loadData,
             <select value={form.category} onChange={e => setForm({...form, category: e.target.value})} style={{ flex: 1 }}>
               {allPrefCategories.map(c => <option key={c}>{c}</option>)}
             </select>
-            <button onClick={openManage} style={{ ...S.ghostBtn, fontSize: 10, color: 'var(--text-muted)', flexShrink: 0, whiteSpace: 'nowrap' }}>⚙ Manage</button>
+            <button onClick={openManage} style={{ background: 'rgba(200,168,64,0.15)', border: '1px solid rgba(200,168,64,0.4)', borderRadius: 4, color: 'var(--gold)', fontSize: 11, padding: '6px 10px', cursor: 'pointer', flexShrink: 0, whiteSpace: 'nowrap', fontFamily: 'var(--font-mono)' }}>⚙ Manage</button>
           </div>
         </Field>
         <Field label="Note *">
