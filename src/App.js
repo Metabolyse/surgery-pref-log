@@ -206,7 +206,10 @@ export default function App() {
 
   const navTo = (v, attending = null, procedure = null) => {
     setView(v);
-    if (attending !== null) setSelectedAttending(attending);
+    if (attending !== null) {
+      if (attending?.id !== selectedAttending?.id) setSelectedProcedure(null);
+      setSelectedAttending(attending);
+    }
     if (procedure !== null) setSelectedProcedure(procedure);
   };
 
