@@ -650,9 +650,19 @@ function DetailView({ attending, selectedProcedure, setSelectedProcedure, navTo,
     await loadData();
   };
 
-  const displayedPrefs = selectedProcedure ? getPrefsForProcedure(attending, selectedProcedure) : (attending.prefs || []).filter(p => p.procedure !== '__ALL__');
+  const handleCopyToGlobal = async (pref) => {
+    // Check if an identical global pref already exists
+    const alreadyGlobal = (attending.prefs || []).some(p => p.procedure === '__ALL__' && p.note === pref.note && p.category === pref.category);
+    if (alreadyGlobal) { showFlash('Already exists as a global preference', 'error'); return; }
+    const { id, created_at, procedure, ...rest } = pref;
+    await supabase.from('preferences').insert([{ ...rest, procedure: '__ALL__' }]);
+    await loadData();
+    showFlash('Copied to global preferences');
+  };
+
+  const displayedPrefs = selectedProcedure && selectedProcedure !== '__ALL__' ? getPrefsForProcedure(attending, selectedProcedure) : selectedProcedure === '__ALL__' ? globalPrefs : (attending.prefs || []).filter(p => p.procedure !== '__ALL__');
   const grouped = displayedPrefs.reduce((acc, p) => {
-    const key = selectedProcedure ? p.category : p.procedure;
+    const key = (selectedProcedure === null) ? p.procedure : p.category;
     if (!acc[key]) acc[key] = [];
     acc[key].push(p);
     return acc;
@@ -789,12 +799,15 @@ function DetailView({ attending, selectedProcedure, setSelectedProcedure, navTo,
             {procedures.map(p => (
               <button key={p} onClick={() => setSelectedProcedure(p)} style={{ ...S.tag, ...(selectedProcedure === p ? S.tagActive : {}) }}>{p}</button>
             ))}
+            {globalPrefs.length > 0 && (
+              <button onClick={() => setSelectedProcedure('__ALL__')} style={{ ...S.tag, ...(selectedProcedure === '__ALL__' ? { ...S.tagActive, borderColor: 'rgba(100,150,80,0.5)', color: '#7a9a6a' } : { borderColor: 'rgba(100,150,80,0.25)', color: '#5a7a4a' }) }}>🌐 Global</button>
+            )}
           </div>
         </div>
       )}
 
-      {/* Global prefs — always shown when a procedure is selected */}
-      {selectedProcedure && globalPrefs.length > 0 && (
+      {/* Global prefs — shown when a non-global procedure is selected */}
+      {selectedProcedure && selectedProcedure !== '__ALL__' && globalPrefs.length > 0 && (
         <div style={{ marginBottom: 16 }}>
           <div style={{ ...S.divider, color: '#7a8a6a', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <span>🌐 Applies to All Procedures</span>
@@ -815,7 +828,7 @@ function DetailView({ attending, selectedProcedure, setSelectedProcedure, navTo,
         </div>
       )}
 
-      {(attending.prefs || []).filter(p => p.procedure !== '__ALL__').length === 0 && !selectedProcedure ? (
+      {(attending.prefs || []).filter(p => p.procedure !== '__ALL__').length === 0 && !selectedProcedure && selectedProcedure !== '__ALL__' ? (
         <div style={{ textAlign: 'center', padding: '36px 20px', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', fontSize: 12, border: '1px dashed rgba(255,255,255,0.07)', borderRadius: 6, marginBottom: 16 }}>
           No preferences logged yet.
         </div>
@@ -835,6 +848,7 @@ function DetailView({ attending, selectedProcedure, setSelectedProcedure, navTo,
                         <span style={{ ...S.miniTag, color: '#3a4a3a' }}>{new Date(p.created_at).toLocaleDateString()}</span>
                       </div>
                     </div>
+                    <button onClick={() => handleCopyToGlobal(p)} title="Copy to global preferences" style={{ background: 'none', border: 'none', color: '#4a6a4a', cursor: 'pointer', fontSize: 11, fontFamily: 'var(--font-mono)', padding: '0 4px', flexShrink: 0, transition: 'color 0.15s' }} onMouseEnter={e => e.currentTarget.style.color='#7a9a6a'} onMouseLeave={e => e.currentTarget.style.color='#4a6a4a'}>🌐</button>
                     <button onClick={() => openEditPref(p)} style={{ background: 'none', border: 'none', color: '#4a6a7a', cursor: 'pointer', fontSize: 11, fontFamily: 'var(--font-mono)', padding: '0 6px', flexShrink: 0 }}>edit</button>
                     <button onClick={() => handleDeletePref(p)} style={{ background: 'none', border: 'none', color: '#3a3a3a', fontSize: 16, padding: 0, lineHeight: 1, flexShrink: 0, transition: 'color 0.15s' }} onMouseEnter={e => e.currentTarget.style.color='#8a4a3a'} onMouseLeave={e => e.currentTarget.style.color='#3a3a3a'}>×</button>
                   </div>
@@ -1010,7 +1024,7 @@ function AddNoteView({ attending, selectedProcedure, navTo, showFlash, loadData,
         <Field label="Procedure *">
           <select value={form.procedure} onChange={e => setForm({...form, procedure: e.target.value})}>
             <option value="">Select procedure...</option>
-            <option value="__ALL__">🌐 All Procedures (global preference)</option>
+            <option value="__ALL__">🌐 Global (applies to all procedures)</option>
             {allProcedures.map(p => <option key={p}>{p}</option>)}
           </select>
         </Field>
