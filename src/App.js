@@ -1065,16 +1065,8 @@ function AddNoteView({ attending, selectedProcedure, navTo, showFlash, loadData,
       <button onClick={() => navTo('detail', attending, selectedProcedure)} style={S.backBtn}>← Back to Dr. {attending.name}</button>
       <h2 style={S.sectionHead}>Log Preference</h2>
       <p style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 24, fontStyle: 'italic' }}>This note will be visible to all residents.</p>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-        <Field label="Procedure *">
-          <select value={form.procedure} onChange={e => setForm({...form, procedure: e.target.value})}>
-            <option value="">Select procedure...</option>
-            <option value="__ALL__">🌐 Global (applies to all procedures)</option>
-            {allProcedures.map(p => <option key={p}>{p}</option>)}
-          </select>
-        </Field>
-        {/* Manage Categories Modal */}
-        {showManageCategories && (
+      {/* Manage Categories Modal */}
+      {showManageCategories && (
           <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.75)', zIndex: 500, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
             <div style={{ background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 8, padding: 24, width: '100%', maxWidth: 440, boxShadow: '0 8px 40px rgba(0,0,0,0.6)', maxHeight: '85vh', display: 'flex', flexDirection: 'column' }}>
               <div style={{ fontSize: 15, color: 'var(--text)', fontFamily: 'var(--font-serif)', marginBottom: 4 }}>Manage Categories</div>
@@ -1142,6 +1134,14 @@ function AddNoteView({ attending, selectedProcedure, navTo, showFlash, loadData,
           </div>
         )}
 
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+        <Field label="Procedure *">
+          <select value={form.procedure} onChange={e => setForm({...form, procedure: e.target.value})}>
+            <option value="">Select procedure...</option>
+            <option value="__ALL__">🌐 Global (applies to all procedures)</option>
+            {allProcedures.map(p => <option key={p}>{p}</option>)}
+          </select>
+        </Field>
         <Field label="Category">
           <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
             <select value={form.category} onChange={e => setForm({...form, category: e.target.value})} style={{ flex: 1 }}>
