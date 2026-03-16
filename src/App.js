@@ -760,8 +760,128 @@ function DetailView({ attending, selectedProcedure, setSelectedProcedure, navTo,
         <button onClick={() => navTo('addNote', attending, selectedProcedure || null)} style={S.primaryBtn}>+ Log Preference</button>
       </div>
 
+      {/* Op Note inline — only when a procedure is selected */}
+      {selectedProcedure && <AttendingOpNoteInline attending={attending} procedure={selectedProcedure} showFlash={showFlash} />}
+
       {/* Case Log inline */}
       <AttendingDebriefInline attending={attending} selectedProcedure={selectedProcedure} navTo={navTo} userId={userId} />
+    </div>
+  );
+}
+
+// ── Attending Op Note Inline ──────────────────────────────────────────────
+function AttendingOpNoteInline({ attending, procedure, showFlash }) {
+  const [opNote, setOpNote] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [editing, setEditing] = useState(false);
+  const [text, setText] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [expanded, setExpanded] = useState(false);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    const { data } = await supabase.from('op_notes').select('*')
+      .eq('attending_id', attending.id).eq('procedure', procedure).maybeSingle();
+    setOpNote(data || null);
+    setText(data?.note_text || '');
+    setLoading(false);
+  }, [attending.id, procedure]);
+
+  useEffect(() => { load(); setEditing(false); setExpanded(false); }, [load]);
+
+  const handleSave = async () => {
+    if (!text.trim()) return;
+    setSaving(true);
+    await supabase.from('op_notes').upsert([{
+      attending_id: attending.id,
+      procedure,
+      note_text: text.trim(),
+      updated_at: new Date().toISOString(),
+    }], { onConflict: 'attending_id,procedure' });
+    setSaving(false);
+    await load();
+    setEditing(false);
+    showFlash('Op note saved');
+  };
+
+  const handleDelete = async () => {
+    if (!window.confirm('Remove this op note template?')) return;
+    await supabase.from('op_notes').delete().eq('attending_id', attending.id).eq('procedure', procedure);
+    setOpNote(null); setText('');
+    showFlash('Op note removed', 'error');
+  };
+
+  const handleCopy = () => {
+    navigator.clipboard.writeText(opNote.note_text);
+    showFlash('Copied to clipboard');
+  };
+
+  if (loading) return null;
+
+  return (
+    <div style={{ marginTop: 20 }}>
+      <div style={{ ...S.divider, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <span style={{ color: '#4a9a6a' }}>📋 Op Note Template</span>
+        {!editing && (
+          <div style={{ display: 'flex', gap: 10 }}>
+            {opNote && <button onClick={handleCopy} style={{ ...S.ghostBtn, fontSize: 10, color: '#4a9a6a' }}>copy</button>}
+            <button onClick={() => { setEditing(true); setExpanded(true); }} style={{ ...S.ghostBtn, fontSize: 10, color: '#4a7a9a' }}>{opNote ? 'edit' : '+ add'}</button>
+            {opNote && <button onClick={handleDelete} style={{ background: 'none', border: 'none', color: '#3a3a3a', fontSize: 15, cursor: 'pointer', padding: 0, transition: 'color 0.15s' }} onMouseEnter={e => e.currentTarget.style.color='#8a4a3a'} onMouseLeave={e => e.currentTarget.style.color='#3a3a3a'}>×</button>}
+          </div>
+        )}
+      </div>
+
+      {!opNote && !editing && (
+        <div style={{ fontSize: 12, color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', fontStyle: 'italic', padding: '10px 0' }}>
+          No op note template yet. Paste one to share with the program.
+        </div>
+      )}
+
+      {opNote && !editing && (
+        <div>
+          <pre style={{
+            margin: 0, fontSize: 12, color: '#8ab0a0', fontFamily: 'var(--font-mono)',
+            lineHeight: 1.75, whiteSpace: 'pre-wrap', wordBreak: 'break-word',
+            maxHeight: expanded ? 'none' : 120, overflow: 'hidden',
+            background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.06)',
+            borderRadius: 'var(--radius)', padding: '12px 14px',
+          }}>
+            {opNote.note_text}
+          </pre>
+          {opNote.note_text.length > 300 && (
+            <button onClick={() => setExpanded(v => !v)} style={{ background: 'none', border: 'none', color: 'var(--gold)', fontFamily: 'var(--font-mono)', fontSize: 10, letterSpacing: '0.08em', cursor: 'pointer', padding: '4px 0', opacity: 0.7 }}
+              onMouseEnter={e => e.currentTarget.style.opacity = 1}
+              onMouseLeave={e => e.currentTarget.style.opacity = 0.7}>
+              {expanded ? '▲ show less' : '▼ show full note'}
+            </button>
+          )}
+          <div style={{ fontSize: 10, color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', marginTop: 5 }}>
+            Updated {new Date(opNote.updated_at).toLocaleDateString()}
+          </div>
+        </div>
+      )}
+
+      {editing && (
+        <div style={{ marginTop: 8 }}>
+          <div style={{ fontSize: 11, color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', marginBottom: 8, lineHeight: 1.5 }}>
+            Paste Dr. {attending.name}'s op note for {procedure}. This will be visible to all residents and auto-populate in the Op Note tab.
+          </div>
+          <textarea
+            value={text}
+            onChange={e => setText(e.target.value)}
+            placeholder="Paste op note text here..."
+            rows={14}
+            autoFocus
+            style={{ fontFamily: 'var(--font-mono)', fontSize: 12, lineHeight: 1.7 }}
+          />
+          <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+            <button onClick={() => { setEditing(false); setText(opNote?.note_text || ''); }} style={{ ...S.secondaryBtn, flex: 1 }}>Cancel</button>
+            <button onClick={handleSave} disabled={saving} style={{ ...S.primaryBtn, flex: 3 }}>
+              {saving ? <Spinner /> : 'Save Op Note'}
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -1143,6 +1263,11 @@ function ResourcesView({ allProcedures, showFlash }) {
 
 // ── Op Note View ───────────────────────────────────────────────────────────
 function OpNoteView({ allProcedures, attendings, getPrefsForProcedure }) {
+  const [opNotes, setOpNotes] = useState([]);
+
+  useEffect(() => {
+    supabase.from('op_notes').select('*').then(({ data }) => setOpNotes(data || []));
+  }, []);
   const [form, setForm] = useState({
     procedure: '', surgeon: '', assistant: 'PGY-[X] resident',
     anesthesia: 'General endotracheal anesthesia', position: '',
@@ -1154,6 +1279,8 @@ function OpNoteView({ allProcedures, attendings, getPrefsForProcedure }) {
   const [qfProcedure, setQfProcedure] = useState('');
   const [copySuccess, setCopySuccess] = useState(false);
 
+  const [opNoteTemplate, setOpNoteTemplate] = useState('');
+
   const quickFill = (attendingId) => {
     const a = attendings.find(x => x.id === attendingId);
     if (!a) return;
@@ -1161,6 +1288,9 @@ function OpNoteView({ allProcedures, attendings, getPrefsForProcedure }) {
     const pos = prefs.find(p => p.category === 'Positioning');
     const prep = prefs.find(p => p.category === 'Prep & Drape');
     setForm(f => ({ ...f, procedure: qfProcedure || f.procedure, surgeon: a.name, position: pos?.note || f.position, prep: prep?.note || f.prep }));
+    // Load op note template if one exists for this attending + procedure
+    const note = opNotes.find(n => n.attending_id === attendingId && n.procedure === qfProcedure);
+    setOpNoteTemplate(note?.note_text || '');
   };
 
   const getNoteText = () => [
@@ -1216,6 +1346,18 @@ function OpNoteView({ allProcedures, attendings, getPrefsForProcedure }) {
           </select>
         </div>
       </div>
+
+      {opNoteTemplate && (
+        <div style={{ ...S.card, marginBottom: 22, background: 'rgba(40,80,60,0.08)', borderColor: 'rgba(60,160,100,0.25)' }}>
+          <div style={{ ...S.divider, color: '#4a9a6a', display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+            <span>📋 Attending Op Note Template</span>
+            <button onClick={() => { navigator.clipboard.writeText(opNoteTemplate); }} style={{ ...S.ghostBtn, fontSize: 10, color: '#4a9a6a' }}>Copy</button>
+          </div>
+          <pre style={{ margin: 0, fontSize: 12, color: '#8ab0a0', fontFamily: 'var(--font-mono)', lineHeight: 1.75, whiteSpace: 'pre-wrap', wordBreak: 'break-word', maxHeight: 320, overflowY: 'auto' }}>
+            {opNoteTemplate}
+          </pre>
+        </div>
+      )}
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
