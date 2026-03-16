@@ -143,9 +143,7 @@ export default function App() {
 
   const allProcedures = [...new Set([...DEFAULT_PROCEDURES.filter(p => !hiddenDefaultProcedures.includes(p)), ...customProcedures.map(p => p.name)])].sort();
   const allSpecialties = [...new Set([...DEFAULT_SPECIALTIES, ...customSpecialties.map(s => s.name)])].sort();
-  const allPrefCategories = customPrefCategories.length > 0
-    ? customPrefCategories.map(c => c.name)
-    : DEFAULT_PREF_CATEGORIES;
+  const allPrefCategories = [...new Set([...DEFAULT_PREF_CATEGORIES, ...customPrefCategories.map(c => c.name)])].sort();
 
   const showFlash = useCallback((msg, type = 'success') => {
     setFlash({ msg, type });
@@ -178,7 +176,7 @@ export default function App() {
         supabase.from('preferences').select('*').order('created_at'),
         supabase.from('custom_procedures').select('*').order('name'),
         supabase.from('custom_specialties').select('*').order('name'),
-        supabase.from('custom_pref_categories').select('*').order('sort_order').order('name'),
+        supabase.from('custom_pref_categories').select('*').order('name'),
         supabase.from('hidden_default_procedures').select('name'),
       ]);
       const attendingsWithPrefs = (att || []).map(a => ({
@@ -374,7 +372,7 @@ export default function App() {
               {view === 'list' && <ListView attendings={filtered} search={search} setSearch={setSearch} navTo={navTo} showFlash={showFlash} loadData={loadData} allProcedures={allProcedures} />}
               {view === 'addAttending' && <AddAttendingView navTo={navTo} showFlash={showFlash} loadData={loadData} allSpecialties={allSpecialties} customSpecialties={customSpecialties} />}
               {view === 'detail' && selectedAttending && <DetailView attending={selectedAttending} selectedProcedure={selectedProcedure} setSelectedProcedure={setSelectedProcedure} navTo={navTo} showFlash={showFlash} loadData={loadData} getProceduresForAttending={getProceduresForAttending} getPrefsForProcedure={getPrefsForProcedure} allProcedures={allProcedures} allSpecialties={allSpecialties} customSpecialties={customSpecialties} allPrefCategories={allPrefCategories} userId={session.user.id} />}
-              {view === 'addNote' && selectedAttending && <AddNoteView attending={selectedAttending} selectedProcedure={selectedProcedure} navTo={navTo} showFlash={showFlash} loadData={loadData} allProcedures={allProcedures} allPrefCategories={allPrefCategories} customPrefCategories={customPrefCategories} />}
+              {view === 'addNote' && selectedAttending && <AddNoteView attending={selectedAttending} selectedProcedure={selectedProcedure} navTo={navTo} showFlash={showFlash} loadData={loadData} allProcedures={allProcedures} allPrefCategories={allPrefCategories} />}
               {view === 'resources' && <ResourcesView allProcedures={allProcedures} showFlash={showFlash} />}
               {view === 'opNote' && <OpNoteView allProcedures={allProcedures} attendings={attendings} getPrefsForProcedure={getPrefsForProcedure} />}
               {view === 'procedures' && <ProceduresView customProcedures={customProcedures} loadData={loadData} showFlash={showFlash} allProcedures={allProcedures} attendings={attendings} navTo={navTo} />}
@@ -1004,51 +1002,12 @@ function AttendingOpNoteInline({ attending, procedure, showFlash }) {
 }
 
 // ── Add Note ───────────────────────────────────────────────────────────────
-function AddNoteView({ attending, selectedProcedure, navTo, showFlash, loadData, allProcedures, allPrefCategories, customPrefCategories }) {
+function AddNoteView({ attending, selectedProcedure, navTo, showFlash, loadData, allProcedures, allPrefCategories }) {
   const [newCategory, setNewCategory] = useState('');
   const [addingCategory, setAddingCategory] = useState(false);
   const [savingCategory, setSavingCategory] = useState(false);
   const [form, setForm] = useState({ procedure: selectedProcedure || '', category: (allPrefCategories && allPrefCategories[0]) || 'Positioning', note: '', critical: false });
   const [saving, setSaving] = useState(false);
-  const [showManageCategories, setShowManageCategories] = useState(false);
-  const [dragList, setDragList] = useState([]);
-  const [dragIdx, setDragIdx] = useState(null);
-  const [savingOrder, setSavingOrder] = useState(false);
-
-  const openManage = () => { setDragList([...allPrefCategories]); setShowManageCategories(true); };
-
-  const handleDragStart = (i) => setDragIdx(i);
-  const handleDragOver = (e, i) => {
-    e.preventDefault();
-    if (dragIdx === null || dragIdx === i) return;
-    const newList = [...dragList];
-    const [removed] = newList.splice(dragIdx, 1);
-    newList.splice(i, 0, removed);
-    setDragList(newList);
-    setDragIdx(i);
-  };
-  const handleDrop = () => setDragIdx(null);
-
-  const saveOrder = async () => {
-    setSavingOrder(true);
-    const updates = dragList.map((name, i) => ({ name, sort_order: i + 1 }));
-    for (const u of updates) {
-      await supabase.from('custom_pref_categories').upsert([u], { onConflict: 'name' });
-    }
-    await loadData();
-    setSavingOrder(false);
-    setShowManageCategories(false);
-    showFlash('Category order saved');
-  };
-
-  const handleDeleteCategory = async (name) => {
-    if (!window.confirm(\`Remove "\${name}" category?\`)) return;
-    await supabase.from('custom_pref_categories').delete().eq('name', name);
-    await loadData();
-    setDragList(l => l.filter(c => c !== name));
-    showFlash(\`"\${name}" removed\`, 'error');
-  };
-
   const handleSave = async () => {
     if (!form.procedure || !form.note.trim()) return;
     setSaving(true);
@@ -1065,75 +1024,6 @@ function AddNoteView({ attending, selectedProcedure, navTo, showFlash, loadData,
       <button onClick={() => navTo('detail', attending, selectedProcedure)} style={S.backBtn}>← Back to Dr. {attending.name}</button>
       <h2 style={S.sectionHead}>Log Preference</h2>
       <p style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 24, fontStyle: 'italic' }}>This note will be visible to all residents.</p>
-      {/* Manage Categories Modal */}
-      {showManageCategories && (
-          <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.75)', zIndex: 500, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
-            <div style={{ background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 8, padding: 24, width: '100%', maxWidth: 440, boxShadow: '0 8px 40px rgba(0,0,0,0.6)', maxHeight: '85vh', display: 'flex', flexDirection: 'column' }}>
-              <div style={{ fontSize: 15, color: 'var(--text)', fontFamily: 'var(--font-serif)', marginBottom: 4 }}>Manage Categories</div>
-              <div style={{ fontSize: 11, color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', marginBottom: 16, lineHeight: 1.5 }}>Drag to reorder. Changes apply everywhere categories are shown.</div>
-
-              <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 5, marginBottom: 14 }}>
-                {dragList.map((cat, i) => (
-                  <div key={cat}
-                    draggable
-                    onDragStart={() => handleDragStart(i)}
-                    onDragOver={e => handleDragOver(e, i)}
-                    onDrop={handleDrop}
-                    style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 12px', background: dragIdx === i ? 'rgba(200,168,64,0.1)' : 'rgba(255,255,255,0.03)', border: `1px solid ${dragIdx === i ? 'rgba(200,168,64,0.35)' : 'rgba(255,255,255,0.08)'}`, borderRadius: 'var(--radius)', cursor: 'grab', transition: 'all 0.1s', userSelect: 'none' }}>
-                    <span style={{ color: 'rgba(255,255,255,0.2)', fontSize: 14, flexShrink: 0 }}>⠿</span>
-                    <span style={{ flex: 1, fontSize: 13, color: 'var(--text)', fontFamily: 'var(--font-serif)' }}>{cat}</span>
-                    <button onClick={() => handleDeleteCategory(cat)} style={{ background: 'none', border: 'none', color: '#3a3a3a', fontSize: 15, cursor: 'pointer', flexShrink: 0, padding: 0, transition: 'color 0.15s' }}
-                      onMouseEnter={e => e.currentTarget.style.color = '#8a4a3a'}
-                      onMouseLeave={e => e.currentTarget.style.color = '#3a3a3a'}>×</button>
-                  </div>
-                ))}
-              </div>
-
-              {/* Add new category inline */}
-              {addingCategory ? (
-                <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
-                  <input value={newCategory} onChange={e => setNewCategory(e.target.value)}
-                    onKeyDown={async e => {
-                      if (e.key === 'Enter') {
-                        const trimmed = newCategory.trim();
-                        if (!trimmed || dragList.includes(trimmed)) { setAddingCategory(false); setNewCategory(''); return; }
-                        setSavingCategory(true);
-                        const newOrder = dragList.length + 1;
-                        await supabase.from('custom_pref_categories').insert([{ name: trimmed, sort_order: newOrder }]);
-                        await loadData();
-                        setDragList(l => [...l, trimmed]);
-                        setForm(f => ({...f, category: trimmed}));
-                        setSavingCategory(false); setAddingCategory(false); setNewCategory('');
-                      }
-                    }}
-                    placeholder="New category name..." autoFocus style={{ flex: 1 }} />
-                  <button onClick={async () => {
-                    const trimmed = newCategory.trim();
-                    if (!trimmed || dragList.includes(trimmed)) { setAddingCategory(false); setNewCategory(''); return; }
-                    setSavingCategory(true);
-                    const newOrder = dragList.length + 1;
-                    await supabase.from('custom_pref_categories').insert([{ name: trimmed, sort_order: newOrder }]);
-                    await loadData();
-                    setDragList(l => [...l, trimmed]);
-                    setForm(f => ({...f, category: trimmed}));
-                    setSavingCategory(false); setAddingCategory(false); setNewCategory('');
-                  }} style={S.secondaryBtn} disabled={savingCategory}>{savingCategory ? <Spinner /> : 'Add'}</button>
-                  <button onClick={() => { setAddingCategory(false); setNewCategory(''); }} style={{ ...S.secondaryBtn, color: 'var(--text-muted)' }}>✕</button>
-                </div>
-              ) : (
-                <button onClick={() => setAddingCategory(true)} style={{ ...S.ghostBtn, fontSize: 11, marginBottom: 12, textAlign: 'left' }}>+ Add new category</button>
-              )}
-
-              <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
-                <button onClick={() => { setShowManageCategories(false); setAddingCategory(false); setNewCategory(''); }} style={{ ...S.secondaryBtn, flex: 1 }}>Cancel</button>
-                <button onClick={saveOrder} disabled={savingOrder} style={{ ...S.primaryBtn, flex: 2 }}>
-                  {savingOrder ? <Spinner /> : 'Save Order'}
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-
       <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
         <Field label="Procedure *">
           <select value={form.procedure} onChange={e => setForm({...form, procedure: e.target.value})}>
@@ -1143,11 +1033,39 @@ function AddNoteView({ attending, selectedProcedure, navTo, showFlash, loadData,
           </select>
         </Field>
         <Field label="Category">
-          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-            <select value={form.category} onChange={e => setForm({...form, category: e.target.value})} style={{ flex: 1 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            <select value={form.category} onChange={e => setForm({...form, category: e.target.value})}>
               {allPrefCategories.map(c => <option key={c}>{c}</option>)}
             </select>
-            <button onClick={openManage} style={{ background: 'rgba(200,168,64,0.15)', border: '1px solid rgba(200,168,64,0.4)', borderRadius: 4, color: 'var(--gold)', fontSize: 11, padding: '6px 10px', cursor: 'pointer', flexShrink: 0, whiteSpace: 'nowrap', fontFamily: 'var(--font-mono)' }}>⚙ Manage</button>
+            {addingCategory ? (
+              <div style={{ display: 'flex', gap: 8 }}>
+                <input value={newCategory} onChange={e => setNewCategory(e.target.value)}
+                  onKeyDown={async e => {
+                    if (e.key === 'Enter') {
+                      const trimmed = newCategory.trim();
+                      if (!trimmed || allPrefCategories.includes(trimmed)) { setAddingCategory(false); setNewCategory(''); return; }
+                      setSavingCategory(true);
+                      await supabase.from('custom_pref_categories').insert([{ name: trimmed }]);
+                      await loadData();
+                      setForm(f => ({...f, category: trimmed}));
+                      setSavingCategory(false); setAddingCategory(false); setNewCategory('');
+                    }
+                  }}
+                  placeholder="New category name..." autoFocus style={{ flex: 1 }} />
+                <button onClick={async () => {
+                  const trimmed = newCategory.trim();
+                  if (!trimmed || allPrefCategories.includes(trimmed)) { setAddingCategory(false); setNewCategory(''); return; }
+                  setSavingCategory(true);
+                  await supabase.from('custom_pref_categories').insert([{ name: trimmed }]);
+                  await loadData();
+                  setForm(f => ({...f, category: trimmed}));
+                  setSavingCategory(false); setAddingCategory(false); setNewCategory('');
+                }} style={S.secondaryBtn} disabled={savingCategory}>{savingCategory ? <Spinner /> : 'Add'}</button>
+                <button onClick={() => { setAddingCategory(false); setNewCategory(''); }} style={{ ...S.secondaryBtn, color: 'var(--text-muted)' }}>Cancel</button>
+              </div>
+            ) : (
+              <button onClick={() => setAddingCategory(true)} style={{ ...S.ghostBtn, fontSize: 11 }}>+ Add new category</button>
+            )}
           </div>
         </Field>
         <Field label="Note *">
