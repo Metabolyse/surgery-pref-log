@@ -218,7 +218,7 @@ export default function App() {
     (a.specialty || '').toLowerCase().includes(search.toLowerCase())
   );
 
-  const getProceduresForAttending = (a) => [...new Set((a?.prefs || []).map(p => p.procedure))];
+  const getProceduresForAttending = (a) => [...new Set((a?.prefs || []).map(p => p.procedure).filter(p => p !== '__ALL__'))];
   const getPrefsForProcedure = (a, proc) => (a?.prefs || []).filter(p => p.procedure === proc);
 
   // ── Export / Import ──
